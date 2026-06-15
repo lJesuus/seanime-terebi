@@ -124,6 +124,7 @@ export function TorrentStreamView({
                         spoilerActive={continueWatchingSpoilerActive}
                         disabled={isEpisodeSelectionLocked}
                         loadingEpisodeNumber={loadingEpisodeNumber}
+                        cardWidth={180}
                     />
                 </View>
             )}

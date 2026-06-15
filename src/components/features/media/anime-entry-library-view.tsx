@@ -4,6 +4,7 @@ import { useServerStatus } from "@/atoms/server.atoms"
 import { EpisodeCardList } from "@/components/features/anime/episode-card-list"
 import { EpisodeListItem } from "@/components/features/anime/episode-list-item"
 import { AnimeEntryActionBar } from "@/components/features/media/anime-entry-action-bar"
+import { AnimeEntryView, AnimeEntryViewSwitcher } from "@/components/features/media/anime-entry-view-switcher"
 import { MediaEntryHeaderBackground, MediaEntryHeaderContent } from "@/components/features/media/media-entry-header"
 import { EPISODE_PAGE_SIZE, EpisodePageSelector } from "@/components/shared/episode-page-selector"
 import { LuffyError } from "@/components/shared/luffy-error"
@@ -32,6 +33,10 @@ type AnimeEntryLibraryViewProps = {
     scrollY?: SharedValue<number>
     showHeaderBackground?: boolean
     onTitlePress?: () => void
+    currentView?: AnimeEntryView
+    onViewChange?: (view: AnimeEntryView) => void
+    isOffline?: boolean
+    hiddenViews?: Set<AnimeEntryView>
 }
 
 type EpisodeSection = {
@@ -64,6 +69,10 @@ export function AnimeEntryLibraryView({
     scrollY: sharedScrollY,
     showHeaderBackground = true,
     onTitlePress,
+    currentView,
+    onViewChange,
+    isOffline,
+    hiddenViews,
 }: AnimeEntryLibraryViewProps) {
     const hasEpisodes = mainEpisodes.length > 0 || specialEpisodes.length > 0 || ncEpisodes.length > 0
     const entryKey = entry.media?.id ?? mediaId ?? entry.mediaId
@@ -192,6 +201,15 @@ export function AnimeEntryLibraryView({
                 <MediaEntryHeaderContent entry={entry} type="anime" onTitlePress={onTitlePress} />
                 <OfflineBanner />
 
+                {currentView && onViewChange && (
+                    <AnimeEntryViewSwitcher
+                        currentView={currentView}
+                        onViewChange={onViewChange}
+                        isOffline={isOffline}
+                        hiddenViews={hiddenViews}
+                    />
+                )}
+
                 {isConnected && (
                     <AnimeEntryActionBar
                         entry={entry}
@@ -210,13 +228,14 @@ export function AnimeEntryLibraryView({
                             watchHistory={watchHistory}
                             watchedProgress={entryProgress}
                             spoilerActive={continueWatchingSpoilerActive}
+                            cardWidth={180}
                         />
                     </View>
                 )}
             </>
         ),
         [continueWatchingSpoilerActive, entry, entryProgress, isConnected, mediaId, onEpisodePress, unwatchedMainEpisodes, watchHistory,
-            showDeferredContent, onTitlePress])
+            showDeferredContent, onTitlePress, currentView, onViewChange, isOffline, hiddenViews])
 
     return (
         <View className={showHeaderBackground ? "flex-1 bg-background" : "flex-1 bg-transparent"}>

@@ -33,6 +33,7 @@ import { usePlayerPreferences } from "@/lib/player/player-preferences"
 import type { MobilePlaybackSource } from "@/lib/player/types"
 import { useContinuitySync } from "@/lib/player/use-continuity-sync"
 import { useMpvPlayer } from "@/lib/player/use-mpv-player"
+import { useIsTV } from "@/hooks/use-device"
 import { cn } from "@/lib/utils"
 import { toast } from "@/lib/utils/toast"
 import { useKeepAwake } from "expo-keep-awake"
@@ -42,8 +43,8 @@ import { useRouter } from "expo-router"
 import { useAtom, useAtomValue } from "jotai/react"
 import { SkipForward } from "lucide-react-native"
 import React from "react"
-import { ActivityIndicator, Dimensions, Platform, StatusBar, Text, useWindowDimensions, View } from "react-native"
-import { Gesture, GestureDetector, GestureHandlerRootView, Pressable } from "react-native-gesture-handler"
+import { ActivityIndicator, Dimensions, Platform, Pressable, StatusBar, Text, useWindowDimensions, View } from "react-native"
+import { Gesture, GestureDetector, GestureHandlerRootView } from "react-native-gesture-handler"
 import Animated, { FadeIn, FadeOut, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 
@@ -77,6 +78,7 @@ function PlayerScreenInner() {
     const IOS_SUBTITLE_CROP_ADJUSTMENT_FACTOR = 0.7
 
     const { back, canGoBack, replace } = useRouter()
+    const isTV = useIsTV()
     const rawInsets = useSafeAreaInsets()
     const insets = React.useMemo(() => {
         if (Platform.OS === "android") {
@@ -904,7 +906,36 @@ function PlayerScreenInner() {
                 <StatusBar hidden />
 
 
-                <View style={{ flex: 1, width: "100%", height: "100%", position: "relative", justifyContent: "center" }}>
+                <Pressable
+                    style={{ flex: 1, width: "100%", height: "100%", position: "relative", justifyContent: "center" }}
+                    focusable={isTV}
+                    hasTVPreferredFocus={isTV}
+                    onPress={() => {
+                        if (isTV) {
+                            if (!controls.controlsVisible) {
+                                controls.showControls()
+                            } else {
+                                player.togglePlayPause()
+                            }
+                        }
+                    }}
+                    {...(isTV ? {
+                        onKeyDown: (e: any) => {
+                            const key = e.nativeEvent.key
+                            if (key === "Select" || key === "Enter" || key === "DPAD_CENTER") {
+                                if (!controls.controlsVisible) {
+                                    controls.showControls()
+                                } else {
+                                    player.togglePlayPause()
+                                }
+                            } else if (key === "DPAD_LEFT") {
+                                player.seekRelative(-10)
+                            } else if (key === "DPAD_RIGHT") {
+                                player.seekRelative(10)
+                            }
+                        }
+                    } : {})}
+                >
                     <MpvPlayerView
                         ref={player.viewRef}
                         source={player.videoSource}
@@ -916,8 +947,9 @@ function PlayerScreenInner() {
                         onError={player.onNativeError}
                         onTracksReady={player.onNativeTracksReady}
                         style={{ width: "100%", height: "100%" }}
+                        pointerEvents="none"
                     />
-                </View>
+                </Pressable>
 
 
                 {state.status === "buffering" && !isPiPActive && (

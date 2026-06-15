@@ -9,6 +9,7 @@ import { LIBRARY_SEARCH_HEADER_BASE_HEIGHT, LibrarySearchHeader } from "@/compon
 import { LuffyError } from "@/components/shared/luffy-error"
 import { OfflineBanner } from "@/components/shared/offline-banner"
 import { useIOSScrollRefreshRateWorkaround } from "@/hooks/use-ios-scroll-refresh-rate-workaround"
+import { useIsTV } from "@/hooks/use-device"
 import { useMangaLibraryCollection } from "@/hooks/use-manga-library-collection"
 import { useIsServerConnected } from "@/lib/offline"
 import { filterEntriesByTitle } from "@/lib/utils/filtering"
@@ -28,6 +29,7 @@ type MangaShelfSection = {
 
 export default function MangaLibraryScreen() {
     const isConnected = useIsServerConnected()
+    const isTV = useIsTV()
     const isFocused = useIsFocused()
     const insets = useSafeAreaInsets()
     const [searchQuery, setSearchQuery] = React.useState("")
@@ -139,9 +141,9 @@ export default function MangaLibraryScreen() {
             className="flex-1 bg-background"
             style={{ paddingTop: hasHero ? 0 : insets.top }}
         >
-            <TabFadeView>
-                <OfflineBanner />
+            <OfflineBanner />
 
+            <TabFadeView>
                 <View className="flex-1">
                     {isSearching ? (
                         <MediaEntryGrid
@@ -185,7 +187,7 @@ export default function MangaLibraryScreen() {
                             maxToRenderPerBatch={2}
                             updateCellsBatchingPeriod={16}
                             windowSize={5}
-                            removeClippedSubviews
+                            removeClippedSubviews={!isTV}
                             onScroll={scrollHandler}
                             scrollEventThrottle={16}
                         />

@@ -4,15 +4,15 @@ import { API_ENDPOINTS } from "@/api/generated/endpoints"
 import { useSetServerUrl } from "@/atoms/server.atoms"
 import { useServerUrl, useSetServerAuthToken, useSetServerStatus } from "@/atoms/server.atoms"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { IMAGES } from "@/constants/images"
 import { logger } from "@/lib/utils/logger"
 import { toast } from "@/lib/utils/toast"
+import { LinearGradient } from "expo-linear-gradient"
 import { router } from "expo-router"
 import * as React from "react"
-import { Image, KeyboardAvoidingView, Text, View } from "react-native"
+import { Image, Platform, Text, View } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 
 export default function Screen() {
@@ -25,11 +25,17 @@ export default function Screen() {
     const [isSubmitting, setIsSubmitting] = React.useState(false)
     const setServerUrl = useSetServerUrl()
 
-    // React.useEffect(() => {
-    //     if (!inputValue && currentServerUrl) {
-    //         setInputValue(currentServerUrl)
-    //     }
-    // }, [currentServerUrl, inputValue])
+    const urlInputRef = React.useRef<any>(null)
+    const passwordInputRef = React.useRef<any>(null)
+
+    // Force initial focus on mount (Mobile only)
+    React.useEffect(() => {
+        if (Platform.isTV) return
+        const timer = setTimeout(() => {
+            urlInputRef.current?.focus()
+        }, 200)
+        return () => clearTimeout(timer)
+    }, [])
 
     const showErrorToast = React.useCallback((message: string) => {
         toast.error(message, {
@@ -103,51 +109,73 @@ export default function Screen() {
     }, [inputValue, passwordValue, setServerAuthToken, setServerStatus, setServerUrl, showErrorToast])
 
     return (
-        <KeyboardAvoidingView className="flex-1 justify-center bg-background px-4">
-            <SafeAreaView
-                style={{
-                    flex: 1,
-                    justifyContent: "center",
-                    alignItems: "center",
-                    gap: 10,
-                }}
-                edges={["top", "right", "bottom", "left"]}
-            >
-                <View className="px-6 flex justify-center items-center -top-32">
-                    <Image
-                        className="w-32 h-32"
-                        source={IMAGES.logo2}
-                        resizeMode="cover"
-                    />
-                </View>
-                <Card className="w-full p-4 rounded-xl bg-background -top-32">
-                    <CardHeader className="items-center">
-                        {/*<CardTitle className="pb-2 text-center">Configuration</CardTitle>*/}
-                        <CardDescription>
-                            <Text>Enter your Seanime server URL and password.</Text>
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <View className="gap-4">
+        <View className="flex-1 bg-background">
+            <LinearGradient
+                colors={["#141527", "#0c0c0c"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0 }}
+            />
+            <SafeAreaView style={{ flex: 1 }} edges={["top", "right", "bottom", "left"]}>
+                <View className="flex-1 flex-row items-center px-12 lg:px-20 gap-8">
+                    {/* Left Side: Brand and Instructions */}
+                    <View className="flex-[0.45] justify-center pr-8 border-r border-white/5">
+                        <View className="mb-6 items-start">
+                            <Image
+                                className="w-24 h-24"
+                                source={IMAGES.logo2}
+                                resizeMode="contain"
+                            />
+                        </View>
+                        <Text className="text-3xl font-bold text-white mb-3 tracking-tight">
+                            Connect to Seanime
+                        </Text>
+                        <Text className="text-sm text-white/60 leading-relaxed mb-6">
+                            Enter your Seanime server URL and password. Make sure the server is running on your local network.
+                        </Text>
+                        <View className="gap-3 bg-white/[0.02] border border-white/[0.04] p-4 rounded-xl">
+                            <View className="flex-row items-start gap-2.5">
+                                <Text className="text-xs font-semibold bg-brand-500/20 text-brand-300 w-5 h-5 rounded-full text-center leading-5">1</Text>
+                                <Text className="text-xs text-white/50 leading-5">Run the Seanime Desktop server on your PC.</Text>
+                            </View>
+                            <View className="flex-row items-start gap-2.5">
+                                <Text className="text-xs font-semibold bg-brand-500/20 text-brand-300 w-5 h-5 rounded-full text-center leading-5">2</Text>
+                                <Text className="text-xs text-white/50 leading-5">Verify that both devices are on the same Wi-Fi network.</Text>
+                            </View>
+                        </View>
+                    </View>
+
+                    {/* Right Side: Form */}
+                    <View className="flex-[0.55] justify-center pl-8">
+                        <View className="gap-6 w-full max-w-md">
                             <View className="gap-2">
-                                <Label htmlFor="server-url-input" nativeID="server-url-label">Server URL</Label>
+                                <Label htmlFor="server-url-input" nativeID="server-url-label" className="text-sm font-semibold text-white/80">
+                                    Server URL
+                                </Label>
                                 <Input
+                                    ref={urlInputRef}
+                                    hasTVPreferredFocus={true}
                                     nativeID="server-url-input"
-                                    className="w-full"
+                                    className="w-full text-sm"
                                     placeholder="http://192.168.1.1:43211"
                                     value={inputValue}
                                     onChangeText={setInputValue}
                                     autoCapitalize="none"
                                     autoCorrect={false}
                                     keyboardType="url"
+                                    returnKeyType="next"
+                                    onSubmitEditing={() => passwordInputRef.current?.focus()}
                                 />
                             </View>
 
                             <View className="gap-2">
-                                <Label htmlFor="server-password-input" nativeID="server-password-label">Server Password</Label>
+                                <Label htmlFor="server-password-input" nativeID="server-password-label" className="text-sm font-semibold text-white/80">
+                                    Server Password
+                                </Label>
                                 <Input
+                                    ref={passwordInputRef}
                                     nativeID="server-password-input"
-                                    className="w-full"
+                                    className="w-full text-sm"
                                     placeholder="Optional"
                                     value={passwordValue}
                                     onChangeText={setPasswordValue}
@@ -155,35 +183,28 @@ export default function Screen() {
                                     autoCorrect={false}
                                     secureTextEntry
                                     textContentType="password"
+                                    returnKeyType="done"
+                                    onSubmitEditing={handleOnContinue}
                                 />
-                                <Text className="text-xs text-white/45">
+                                <Text className="text-xs text-white/35">
                                     Leave this blank if the server does not require a password.
                                 </Text>
                             </View>
-                        </View>
-                    </CardContent>
-                    <CardFooter className="flex-col gap-3 pb-0">
-                        <Button
-                            variant="default"
-                            className=""
-                            onPress={handleOnContinue}
-                            disabled={isSubmitting}
-                        >
-                            <Text>{isSubmitting ? "Connecting..." : "Continue"}</Text>
-                        </Button>
-                    </CardFooter>
-                </Card>
 
-                {/*<Pressable*/}
-                {/*    onPress={() => Linking.openURL("https://seanime.app/mobile-server")}*/}
-                {/*    className="mt-4 flex-row items-center justify-center gap-1.5 active:opacity-75"*/}
-                {/*>*/}
-                {/*    <Ionicons name="information-circle-outline" size={16} color="rgba(255,255,255,0.4)" />*/}
-                {/*    <Text className="text-white/40 text-xs font-medium underline">*/}
-                {/*        Run a Seanime Server on this phone*/}
-                {/*    </Text>*/}
-                {/*</Pressable>*/}
+                            <View className="mt-4">
+                                <Button
+                                    variant="default"
+                                    className="w-full h-12 rounded-xl justify-center items-center"
+                                    onPress={handleOnContinue}
+                                    disabled={isSubmitting}
+                                >
+                                    <Text>{isSubmitting ? "Connecting..." : "Continue"}</Text>
+                                </Button>
+                            </View>
+                        </View>
+                    </View>
+                </View>
             </SafeAreaView>
-        </KeyboardAvoidingView>
+        </View>
     )
 }

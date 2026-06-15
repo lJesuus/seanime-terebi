@@ -7,7 +7,8 @@ import { useEpisodeDownloadStatus } from "@/lib/downloads"
 import { Ionicons } from "@/lib/icons/Ionicons"
 import { cn } from "@/lib/utils"
 import React from "react"
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native"
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from "react-native"
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated"
 
 type EpisodeListItemProps = {
     episode: Anime_Episode
@@ -118,6 +119,25 @@ function EpisodeListItemInner({
     thumbnailOverlay,
     blurAdultContent,
 }: EpisodeListItemProps) {
+    const isTV = Platform.isTV
+
+    const [isFocused, setIsFocused] = React.useState(false)
+    const scale = useSharedValue(1)
+
+    const animatedStyle = useAnimatedStyle(() => ({
+        transform: [{ scale: scale.value }],
+    }))
+
+    function handleFocus() {
+        setIsFocused(true)
+        scale.set(withTiming(1.025, { duration: 150 }))
+    }
+
+    function handleBlur() {
+        setIsFocused(false)
+        scale.set(withTiming(1, { duration: 150 }))
+    }
+
     const serverStatus = useServerStatus()
     const downloadStatus = useEpisodeDownloadStatus(mediaId, episode)
     const spoiler = getEpisodeSpoilerState(serverStatus, {
@@ -190,7 +210,7 @@ function EpisodeListItemInner({
 
     const rowContent = (
         <>
-            {rowPressable ? (
+            {(rowPressable || isTV) ? (
                 <View
                     className={cn("relative mr-3 rounded-xl overflow-hidden bg-background flex-none")}
                     style={{ width: thumbnailWidth, height: (9 / 16) * thumbnailWidth }}
@@ -260,6 +280,31 @@ function EpisodeListItemInner({
 
         </>
     )
+
+    if (isTV) {
+        return (
+            <Pressable
+                onPress={onEpisodePress ? () => onEpisodePress(episode) : undefined}
+                onLongPress={onEpisodeLongPress ? () => onEpisodeLongPress(episode) : undefined}
+                focusable={true}
+                onFocus={handleFocus}
+                onBlur={handleBlur}
+            >
+                <Animated.View style={animatedStyle}>
+                    <View
+                        className={cn(
+                            "bg-card/30 border flex-row items-stretch px-3 py-3 rounded-xl",
+                            isFocused
+                                ? "border-2 border-brand-400/80 shadow-2xl"
+                                : "border-[0.5px] border-border/50",
+                        )}
+                    >
+                        {rowContent}
+                    </View>
+                </Animated.View>
+            </Pressable>
+        )
+    }
 
     const sharedProps = {
         className: cn(

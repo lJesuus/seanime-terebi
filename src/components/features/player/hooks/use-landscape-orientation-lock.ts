@@ -15,9 +15,7 @@ const PORTRAIT_ORIENTATIONS = new Set<ScreenOrientation.Orientation>([
 ])
 
 export function useLandscapeOrientationLock({
-    restoreLock = Platform.OS === "android"
-        ? ScreenOrientation.OrientationLock.PORTRAIT_UP
-        : ScreenOrientation.OrientationLock.DEFAULT,
+    restoreLock = ScreenOrientation.OrientationLock.DEFAULT,
 }: UseLandscapeOrientationLockParams = {}) {
     const currentLockRef = React.useRef<ScreenOrientation.OrientationLock>(
         Platform.OS === "ios"

@@ -1,7 +1,7 @@
 import { COLORS } from "@/constants/colors"
 import { LinearGradient } from "expo-linear-gradient"
 import * as React from "react"
-import { View } from "react-native"
+import { Platform, View } from "react-native"
 import Animated, { Extrapolation, interpolate, interpolateColor, SharedValue, useAnimatedStyle } from "react-native-reanimated"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { LibrarySearchBar, type LibrarySearchBarProps } from "./library-search-bar"
@@ -17,6 +17,23 @@ export interface LibrarySearchHeaderProps extends LibrarySearchBarProps {
 export function LibrarySearchHeader(props: LibrarySearchHeaderProps) {
     const { scrollY, hasHero = false, ...searchProps } = props
     const insets = useSafeAreaInsets()
+    const isTV = Platform.isTV
+
+    const headerHeight = hasHero ? (insets.top + LIBRARY_SEARCH_HEADER_BASE_HEIGHT) : LIBRARY_SEARCH_HEADER_BASE_HEIGHT
+    const paddingTop = hasHero ? (insets.top + 8) : 8
+
+    if (isTV) {
+        return (
+            <View style={{ height: headerHeight }} className="bg-background">
+                <View
+                    style={{ paddingTop, paddingBottom: 8 }}
+                    className="px-4 flex-row items-center justify-between"
+                >
+                    <LibrarySearchBar {...searchProps} />
+                </View>
+            </View>
+        )
+    }
 
     const animatedBgStyle = useAnimatedStyle(() => {
         if (!hasHero || !scrollY) {
@@ -62,9 +79,6 @@ export function LibrarySearchHeader(props: LibrarySearchHeaderProps) {
 
         return { opacity }
     })
-
-    const headerHeight = hasHero ? (insets.top + LIBRARY_SEARCH_HEADER_BASE_HEIGHT) : LIBRARY_SEARCH_HEADER_BASE_HEIGHT
-    const paddingTop = hasHero ? (insets.top + 8) : 8
 
     return (
         <View

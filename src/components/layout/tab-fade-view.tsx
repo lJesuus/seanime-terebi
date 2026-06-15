@@ -1,15 +1,24 @@
+import { TVFocusContext } from "@/contexts/tv-focus-context"
+import { FocusableView, FocusableViewHandle } from "@/components/layout/focusable-view"
 import { useFocusEffect } from "expo-router"
 import * as React from "react"
-import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated"
+import { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated"
 
 export function TabFadeView({ children, style }: { children: React.ReactNode; style?: object }) {
     const opacity = useSharedValue(0)
+    const { setContentWrapperTag } = React.useContext(TVFocusContext)
+    const rootRef = React.useRef<FocusableViewHandle>(null)
+
+    React.useLayoutEffect(() => {
+        if (rootRef.current) {
+            setContentWrapperTag(rootRef.current.nativeTag as number)
+        }
+    }, [setContentWrapperTag])
 
     useFocusEffect(
         React.useCallback(() => {
             opacity.set(withTiming(1, { duration: 180 }))
             return () => {
-                // immediately reset so the next focus always starts from 0
                 opacity.set(0)
             }
         }, [opacity]),
@@ -18,8 +27,11 @@ export function TabFadeView({ children, style }: { children: React.ReactNode; st
     const animStyle = useAnimatedStyle(() => ({ opacity: opacity.value }))
 
     return (
-        <Animated.View style={[{ flex: 1 }, animStyle, style]}>
+        <FocusableView
+            ref={rootRef}
+            style={[{ flex: 1 }, animStyle, style]}
+        >
             {children}
-        </Animated.View>
+        </FocusableView>
     )
 }

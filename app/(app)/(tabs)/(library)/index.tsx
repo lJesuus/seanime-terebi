@@ -12,6 +12,7 @@ import { LuffyError } from "@/components/shared/luffy-error"
 import { OfflineBanner } from "@/components/shared/offline-banner"
 import { ContinueWatchingItem, useAnimeLibraryCollection } from "@/hooks/use-anime-library-collection"
 import { useIOSScrollRefreshRateWorkaround } from "@/hooks/use-ios-scroll-refresh-rate-workaround"
+import { useIsTV } from "@/hooks/use-device"
 import { useIsServerConnected } from "@/lib/offline"
 import { filterEntriesByTitle } from "@/lib/utils/filtering"
 import { useIsFocused } from "@react-navigation/native"
@@ -31,6 +32,7 @@ type LibraryShelfSection = {
 
 export default function LibraryScreen() {
     const isConnected = useIsServerConnected()
+    const isTV = useIsTV()
     const isFocused = useIsFocused()
     const insets = useSafeAreaInsets()
     const [searchQuery, setSearchQuery] = React.useState("")
@@ -162,22 +164,30 @@ export default function LibraryScreen() {
     return (
         <View
             className="flex-1 bg-background"
-            style={{ paddingTop: hasHero ? 0 : insets.top }}
+            style={{ paddingTop: isTV ? 0 : (hasHero ? 0 : insets.top) }}
         >
-            <TabFadeView>
-                <OfflineBanner />
+            <OfflineBanner />
 
+            <TabFadeView noSidebarOffset>
                 <View className="flex-1">
+                    {isConnected && isTV && (
+                        <LibrarySearchHeader
+                            value={searchQuery}
+                            onChangeText={setSearchQuery}
+                            placeholder="Search anime..."
+                        />
+                    )}
                     {isSearching ? (
                         <MediaEntryGrid
                             type="anime"
                             media={searchResults}
                             query={searchQuery}
                             onPress={(media) => router.push(`/(app)/entry/anime/${media.id}`)}
-                            topPadding={searchHeaderHeight}
+                            topPadding={isTV ? 0 : searchHeaderHeight}
                         />
                     ) : (
                         <Animated.FlatList
+                            focusable={false}
                             key={isConnected ? "online" : "offline"}
                             data={isConnected ? shelfSections : []}
                             renderItem={renderShelfSection}
@@ -207,7 +217,7 @@ export default function LibraryScreen() {
                             ) : null}
                             contentInsetAdjustmentBehavior="never"
                             contentContainerStyle={{
-                                paddingTop: hasHero ? 0 : searchHeaderHeight,
+                                paddingTop: isTV ? 0 : (hasHero ? 0 : searchHeaderHeight),
                                 paddingBottom: 80,
                             }}
                             showsVerticalScrollIndicator={false}
@@ -216,13 +226,13 @@ export default function LibraryScreen() {
                             maxToRenderPerBatch={2}
                             updateCellsBatchingPeriod={16}
                             windowSize={5}
-                            removeClippedSubviews
+                            removeClippedSubviews={!isTV}
                             onScroll={scrollHandler}
                             scrollEventThrottle={16}
                         />
                     )}
 
-                    {isConnected && (
+                    {isConnected && !isTV && (
                         <LibrarySearchHeader
                             value={searchQuery}
                             onChangeText={setSearchQuery}

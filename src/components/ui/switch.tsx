@@ -44,8 +44,9 @@ const RGB_COLORS = {
 const SwitchNative = React.forwardRef<
     React.ElementRef<typeof SwitchPrimitives.Root>,
     React.ComponentPropsWithoutRef<typeof SwitchPrimitives.Root>
->(({ className, ...props }, ref) => {
+>(({ className, onFocus, onBlur, ...props }, ref) => {
     const { colorScheme } = useColorScheme()
+    const [isFocused, setIsFocused] = React.useState(false)
     const translateX = useDerivedValue(() => (props.checked ? 18 : 0))
     const animatedRootStyle = useAnimatedStyle(() => {
         return {
@@ -62,13 +63,26 @@ const SwitchNative = React.forwardRef<
     return (
         <Animated.View
             style={animatedRootStyle}
-            className={cn("h-8 w-[46px] rounded-full", props.disabled && "opacity-50")}
+            className={cn(
+                "h-8 w-[46px] rounded-full",
+                props.disabled && "opacity-50",
+                isFocused && "border border-brand-400 scale-102"
+            )}
         >
             <SwitchPrimitives.Root
                 className={cn(
                     "flex-row h-8 w-[46px] shrink-0 items-center rounded-full border-2 border-transparent",
                     className,
                 )}
+                focusable={true}
+                onFocus={(e) => {
+                    setIsFocused(true)
+                    onFocus?.(e)
+                }}
+                onBlur={(e) => {
+                    setIsFocused(false)
+                    onBlur?.(e)
+                }}
                 {...props}
                 ref={ref}
             >

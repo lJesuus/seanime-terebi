@@ -1,6 +1,8 @@
+import { useIsTV } from "@/hooks/use-device"
+import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import React from "react"
-import { Text, useWindowDimensions, View } from "react-native"
+import { Pressable, Text, useWindowDimensions, View } from "react-native"
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated"
 
 interface AutoNextCardProps {

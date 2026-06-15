@@ -82,11 +82,15 @@ class MpvPlayerView(context: Context, appContext: AppContext) : ExpoView(context
         }
         addView(textureView)
 
-        renderer = MPVLayerRenderer(context).also {
-            it.delegate = this
-            it.start()
+        try {
+            renderer = MPVLayerRenderer(context).also {
+                it.delegate = this
+                it.start()
+            }
+            rendererStarted = true
+        } catch (e: Throwable) {
+            Log.e(TAG, "Failed to start mpv renderer", e)
         }
-        rendererStarted = true
 
         pipController = PiPController(context, appContext).also {
             it.setPlayerView(textureView)
@@ -143,15 +147,21 @@ class MpvPlayerView(context: Context, appContext: AppContext) : ExpoView(context
         cachedDuration = 0.0
         dispatchedPaused = null
 
-        renderer?.load(
-            url = config.url,
-            headers = config.headers,
-            startPosition = config.startPosition,
-            externalSubtitles = config.externalSubtitles
-        )
+        try {
+            renderer?.load(
+                url = config.url,
+                headers = config.headers,
+                startPosition = config.startPosition,
+                externalSubtitles = config.externalSubtitles
+            )
 
-        if (config.autoplay) {
-            play()
+            if (config.autoplay) {
+                play()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to load video in renderer", e)
+            onError(mapOf("error" to "Failed to load video: ${e.message}"))
+            return
         }
 
         onLoad(mapOf("url" to config.url))

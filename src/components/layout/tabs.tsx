@@ -1,7 +1,9 @@
 import { Status } from "@/api/generated/types"
+import { AppTabConfig } from "@/components/layout/sidebar"
 import { TabBarIcon } from "@/components/navigation/tab-bar-icon"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { COLORS } from "@/constants/colors"
+import { useShowSidebar } from "@/hooks/use-device"
 import { cn } from "@/lib/utils"
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { BottomTabBarProps, BottomTabNavigationOptions } from "@react-navigation/bottom-tabs"
@@ -11,15 +13,22 @@ import { Platform, Pressable, StyleSheet, Text, View } from "react-native"
 import Animated, { interpolate, useAnimatedStyle, useSharedValue, withSpring } from "react-native-reanimated"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 
-export type AppTabConfig = {
-    show: boolean
-    name: string
-    displayName: string
-    icon: ComponentProps<typeof Ionicons>["name"]
-    options?: BottomTabNavigationOptions
+export function TabBar(props: BottomTabBarProps & {
+    tabs: AppTabConfig[],
+    user: Status["user"] | undefined
+}) {
+    const showSidebar = useShowSidebar()
+
+    // When sidebar is visible (TV/Landscape), the sidebar is rendered separately
+    // by SidebarShell. The tabBar for TV is empty since sidebar handles navigation.
+    if (showSidebar) {
+        return null
+    }
+
+    return <BottomTabBar {...props} />
 }
 
-export function TabBar({ state, descriptors, navigation, tabs, user }: BottomTabBarProps & {
+export function BottomTabBar({ state, descriptors, navigation, tabs, user }: BottomTabBarProps & {
     tabs: AppTabConfig[],
     user: Status["user"] | undefined
 }) {
@@ -34,12 +43,6 @@ export function TabBar({ state, descriptors, navigation, tabs, user }: BottomTab
                 const { options } = descriptors[route.key]
                 const tab = tabs.find(tab => tab.name === route.name)
                 if (!tab?.show) return null
-                // const label =
-                //     options.tabBarLabel !== undefined
-                //         ? options.tabBarLabel as string
-                //         : options.title !== undefined
-                //             ? options.title
-                //             : route.name
 
                 const isFocused = state.index === index
 

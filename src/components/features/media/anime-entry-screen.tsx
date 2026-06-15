@@ -5,7 +5,7 @@ import { AnimeEntryDownloadedView } from "@/components/features/media/anime-entr
 import { AnimeEntryInfoView } from "@/components/features/media/anime-entry-info-view"
 import { AnimeEntryLibraryView } from "@/components/features/media/anime-entry-library-view"
 import { useAnimeEntryScreen } from "@/components/features/media/anime-entry-screen-context"
-import { AnimeEntryView, AnimeEntryViewSwitcher } from "@/components/features/media/anime-entry-view-switcher"
+import { AnimeEntryView } from "@/components/features/media/anime-entry-view-switcher"
 import { MediaEntryHeaderBackground } from "@/components/features/media/media-entry-header"
 import { MediaEntryScrollShell } from "@/components/features/media/media-entry-scroll-shell"
 import { AnimeEntryOnlinestreamSection } from "@/components/features/onlinestream/anime-entry-onlinestream-section"
@@ -23,7 +23,6 @@ import * as React from "react"
 import { useEffect, useMemo, useState } from "react"
 import { InteractionManager, RefreshControl, View } from "react-native"
 import Animated, { FadeIn, useSharedValue } from "react-native-reanimated"
-import { useSafeAreaInsets } from "react-native-safe-area-context"
 
 type AnimeEntryScreenProps = {
     initialView?: AnimeEntryView
@@ -62,7 +61,6 @@ export function AnimeEntryScreen({ initialView = "library" }: AnimeEntryScreenPr
     const { id, entry, isFetching, refetch } = useAnimeEntryScreen()
     const [playbackIntent, setPlaybackIntent] = useAtom(animeEntryPlaybackIntentAtom)
     const isFocused = useIsFocused()
-    const insets = useSafeAreaInsets()
     const serverStatus = useServerStatus()
     const connectionState = useServerConnectionState()
     const isConnected = useIsServerConnected()
@@ -284,6 +282,10 @@ export function AnimeEntryScreen({ initialView = "library" }: AnimeEntryScreenPr
                             scrollY={libraryScrollY}
                             showHeaderBackground={false}
                             onTitlePress={() => setCurrentView("info")}
+                            currentView={currentView}
+                            onViewChange={setCurrentView}
+                            isOffline={isOffline}
+                            hiddenViews={hiddenViews}
                         />
                     </View>
                 )}
@@ -298,6 +300,10 @@ export function AnimeEntryScreen({ initialView = "library" }: AnimeEntryScreenPr
                             scrollY={torrentstreamScrollY}
                             showHeaderBackground={false}
                             onTitlePress={() => setCurrentView("info")}
+                            currentView={currentView}
+                            onViewChange={setCurrentView}
+                            isOffline={isOffline}
+                            hiddenViews={hiddenViews}
                         >
                             <OfflineBanner />
                             <AnimeEntryTorrentStreamSection entry={entry} />
@@ -315,6 +321,10 @@ export function AnimeEntryScreen({ initialView = "library" }: AnimeEntryScreenPr
                             scrollY={onlinestreamScrollY}
                             showHeaderBackground={false}
                             onTitlePress={() => setCurrentView("info")}
+                            currentView={currentView}
+                            onViewChange={setCurrentView}
+                            isOffline={isOffline}
+                            hiddenViews={hiddenViews}
                         >
                             <OfflineBanner />
                             <AnimeEntryOnlinestreamSection entry={entry} />
@@ -332,6 +342,10 @@ export function AnimeEntryScreen({ initialView = "library" }: AnimeEntryScreenPr
                             scrollY={infoScrollY}
                             showHeaderBackground={false}
                             onTitlePress={() => setCurrentView("info")}
+                            currentView={currentView}
+                            onViewChange={setCurrentView}
+                            isOffline={isOffline}
+                            hiddenViews={hiddenViews}
                         >
                             <OfflineBanner />
                             <AnimeEntryInfoView mediaId={entry.media.id} fallbackDescription={entry.media.description} />
@@ -349,6 +363,10 @@ export function AnimeEntryScreen({ initialView = "library" }: AnimeEntryScreenPr
                             scrollY={downloadedScrollY}
                             showHeaderBackground={false}
                             onTitlePress={() => setCurrentView("info")}
+                            currentView={currentView}
+                            onViewChange={setCurrentView}
+                            isOffline={isOffline}
+                            hiddenViews={hiddenViews}
                         >
                             <OfflineBanner />
                             <AnimeEntryDownloadedView entry={entry} />
@@ -356,14 +374,6 @@ export function AnimeEntryScreen({ initialView = "library" }: AnimeEntryScreenPr
                     </View>
                 )}
             </View>
-
-            <AnimeEntryViewSwitcher
-                currentView={currentView}
-                onViewChange={setCurrentView}
-                bottomInset={insets.bottom}
-                isOffline={isOffline}
-                hiddenViews={hiddenViews}
-            />
         </Animated.View>
     )
 }

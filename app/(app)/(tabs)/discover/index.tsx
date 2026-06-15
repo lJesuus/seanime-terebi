@@ -18,13 +18,13 @@ import {
     useDiscoverUpcomingAnime,
 } from "@/components/features/discover/discover-queries"
 import { HorizontalMediaCardList } from "@/components/features/media/horizontal-media-card-list"
-import { SafeView } from "@/components/layout/layout-view"
 import { TabFadeView } from "@/components/layout/tab-fade-view"
 import { MediaGenreSelector } from "@/components/shared/media-genre-selector"
 import { OfflineBanner } from "@/components/shared/offline-banner"
 import { Skeleton } from "@/components/ui/skeleton"
 import { COLORS } from "@/constants/colors"
 import { useDevScreenProfiler } from "@/hooks/use-dev-screen-profiler"
+import { useIsTV } from "@/hooks/use-device"
 import { useIOSScrollRefreshRateWorkaround } from "@/hooks/use-ios-scroll-refresh-rate-workaround"
 import { useIsServerConnected } from "@/lib/offline"
 import { SEARCH_MEDIA_GENRES } from "@/lib/search/search-constants"
@@ -33,15 +33,16 @@ import Ionicons from "@expo/vector-icons/Ionicons"
 import { useIsFocused } from "@react-navigation/native"
 import { router } from "expo-router"
 import * as React from "react"
-import { ActivityIndicator, Dimensions, Pressable, Text, View, ViewToken } from "react-native"
-import Animated, { useAnimatedScrollHandler, useSharedValue } from "react-native-reanimated"
+import { ActivityIndicator, Dimensions, Platform, Pressable, Text, View, ViewToken } from "react-native"
+import Animated, { useAnimatedScrollHandler, useAnimatedStyle, useSharedValue, withSpring } from "react-native-reanimated"
 
 type DiscoverMode = "anime" | "manga"
 
 const { width: SCREEN_WIDTH } = Dimensions.get("screen")
-const DISCOVER_CARD_WIDTH = (2 / 5) * SCREEN_WIDTH
-const DISCOVER_CARD_ROW_HEIGHT = DISCOVER_CARD_WIDTH * 1.5 + 16
-const DISCOVER_SECTION_HEADER_HEIGHT = 56
+const isTV = Platform.isTV
+const DISCOVER_CARD_WIDTH = isTV ? SCREEN_WIDTH / 5.5 : (2 / 5) * SCREEN_WIDTH
+const DISCOVER_CARD_ROW_HEIGHT = DISCOVER_CARD_WIDTH * 1.5 + (isTV ? 24 : 16)
+const DISCOVER_SECTION_HEADER_HEIGHT = isTV ? 64 : 56
 const DISCOVER_ANIME_SECTION_ITEMS = [
     { key: "trending" },
     { key: "current-season" },
@@ -81,9 +82,9 @@ export default function DiscoverScreen() {
 
     if (!isConnected) {
         return (
-            <SafeView>
+            <View className="flex-1 bg-background">
+                <OfflineBanner />
                 <TabFadeView>
-                    <OfflineBanner />
                     <View className="flex-1 items-center justify-center px-8">
                         <Ionicons name="cloud-offline-outline" size={40} color="rgba(255,255,255,0.2)" />
                         <Text className="text-white/30 text-sm mt-3 text-center">
@@ -91,7 +92,7 @@ export default function DiscoverScreen() {
                         </Text>
                     </View>
                 </TabFadeView>
-            </SafeView>
+            </View>
         )
     }
 
@@ -143,8 +144,9 @@ export function DiscoverModeToggle({
     mode: DiscoverMode
     onChangeMode: (mode: DiscoverMode) => void
 }) {
+    const isTV = useIsTV()
     return (
-        <View className="mb-2 flex-row self-center rounded-xl p-0.5">
+        <View className={cn("flex-row self-center rounded-xl p-0.5", isTV ? "gap-3" : "mb-2")}>
             <TogglePill
                 label="Anime"
                 isActive={mode === "anime"}
@@ -168,19 +170,45 @@ function TogglePill({
     isActive: boolean
     onPress: () => void
 }) {
+    const isTV = useIsTV()
+    const [isFocused, setIsFocused] = React.useState(false)
+    const scale = useSharedValue(1)
+
+    React.useEffect(() => {
+        scale.set(withSpring(isFocused ? 1.05 : 1, { damping: 15, stiffness: 200 }))
+    }, [isFocused, scale])
+
+    const animatedStyle = useAnimatedStyle(() => ({
+        transform: [{ scale: scale.value }],
+    }))
+
     return (
-        <View className="overflow-hidden rounded-xl">
-            <Pressable
-                onPress={onPress}
-                android_ripple={{ color: "rgba(255,255,255,0.1)" }}
+        <Pressable
+            focusable={isTV}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
+            onPress={onPress}
+            android_ripple={{ color: "rgba(255,255,255,0.1)" }}
+        >
+            <Animated.View
+                className={cn(
+                    "rounded-xl px-6 py-2",
+                    isActive ? "bg-white/15" : "bg-transparent",
+                    isFocused && isTV ? "border border-brand-400/60" : "",
+                )}
+                style={isTV ? animatedStyle : undefined}
             >
-                <View className={cn("px-6 py-2", isActive ? "bg-white/15" : "bg-transparent")}>
-                    <Text className={cn("text-sm font-medium text-white/45", isActive && "font-bold text-white")}>
-                        {label}
-                    </Text>
-                </View>
-            </Pressable>
-        </View>
+                <Text
+                    className={cn(
+                        "text-sm font-medium text-white/45",
+                        isActive && "font-bold text-white",
+                    )}
+                    style={isTV ? { fontSize: 16 } : undefined}
+                >
+                    {label}
+                </Text>
+            </Animated.View>
+        </Pressable>
     )
 }
 
@@ -189,15 +217,35 @@ function TogglePill({
 ///////////////////////////////////////////////////////////////////////////////
 
 function DiscoverSearchRow({ type }: { type: DiscoverMode }) {
+    const isTV = useIsTV()
+    const [isFocused, setIsFocused] = React.useState(false)
+    const scale = useSharedValue(1)
+
+    React.useEffect(() => {
+        scale.set(withSpring(isFocused ? 1.1 : 1, { damping: 15, stiffness: 200 }))
+    }, [isFocused, scale])
+
+    const animatedStyle = useAnimatedStyle(() => ({
+        transform: [{ scale: scale.value }],
+    }))
+
     return (
-        <View className="">
-            <Pressable
-                onPress={() => router.push(`/(app)/(tabs)/discover/search?type=${type}`)}
-                className="rounded-2xl px-3 active:opacity-75"
+        <Pressable
+            focusable={isTV}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
+            onPress={() => router.push(`/(app)/(tabs)/discover/search?type=${type}`)}
+        >
+            <Animated.View
+                className={cn(
+                    "rounded-2xl p-2 active:opacity-75",
+                    isFocused && isTV ? "bg-white/10" : "",
+                )}
+                style={isTV ? animatedStyle : undefined}
             >
-                <Ionicons name="search-outline" size={24} color="rgba(255,255,255,0.35)" />
-            </Pressable>
-        </View>
+                <Ionicons name="search-outline" size={isTV ? 30 : 24} color="rgba(255,255,255,0.35)" />
+            </Animated.View>
+        </Pressable>
     )
 }
 
@@ -282,6 +330,7 @@ function DiscoverListHeader({
     heroController: ReturnType<typeof useDiscoverHeroCarouselController>
     onChangeMode: (mode: DiscoverMode) => void
 }) {
+    const isTV = useIsTV()
     return (
         <>
             {heroMedia.length > 0 ? (
@@ -290,7 +339,7 @@ function DiscoverListHeader({
                 <HeroSkeleton />
             ) : null}
 
-            <View className="flex-row items-center justify-between px-3.5">
+            <View className={cn("flex-row items-center justify-between", isTV ? "px-6 pt-4 pb-2" : "px-3.5")}>
                 <View className="pt-1">
                     <DiscoverModeToggle mode={mode} onChangeMode={onChangeMode} />
                 </View>
@@ -305,24 +354,24 @@ function DiscoverSectionSkeleton({ title }: { title: string }) {
     return (
         <View className="flex flex-col gap-4">
             <View
-                className="flex-row items-center justify-between px-4"
-                style={{ height: DISCOVER_SECTION_HEADER_HEIGHT }}
+                className="flex-row items-center justify-between"
+                style={{ height: DISCOVER_SECTION_HEADER_HEIGHT, paddingHorizontal: isTV ? 28 : 16 }}
             >
-                <Skeleton className="h-6 w-40 rounded-lg bg-white/10" />
-                <Skeleton className="h-8 w-8 rounded-full bg-white/10" />
+                <Skeleton className={cn("rounded-lg bg-white/10", isTV ? "h-8 w-56" : "h-6 w-40")} />
+                <Skeleton className={cn("rounded-full bg-white/10", isTV ? "h-10 w-10" : "h-8 w-8")} />
             </View>
 
             <View style={{ height: DISCOVER_CARD_ROW_HEIGHT }}>
-                <View className="flex-row px-5" style={{ gap: 10 }}>
-                    {Array.from({ length: 3 }, (_, index) => (
+                <View className="flex-row" style={{ gap: isTV ? 16 : 10, paddingHorizontal: isTV ? 28 : 20 }}>
+                    {Array.from({ length: isTV ? 5 : 3 }, (_, index) => (
                         <View key={`${title}-${index}`} style={{ width: DISCOVER_CARD_WIDTH }} className="gap-3">
                             <View style={{ width: DISCOVER_CARD_WIDTH, height: DISCOVER_CARD_WIDTH * 1.5 }}>
                                 <Skeleton className="h-full w-full rounded-xl bg-white/10" />
                             </View>
-                            <View style={{ width: DISCOVER_CARD_WIDTH * 0.82, height: 12 }}>
+                            <View style={{ width: DISCOVER_CARD_WIDTH * 0.82, height: isTV ? 16 : 12 }}>
                                 <Skeleton className="h-full w-full rounded-full bg-white/10" />
                             </View>
-                            <View style={{ width: DISCOVER_CARD_WIDTH * 0.56, height: 12 }}>
+                            <View style={{ width: DISCOVER_CARD_WIDTH * 0.56, height: isTV ? 14 : 12 }}>
                                 <Skeleton className="h-full w-full rounded-full bg-white/10" />
                             </View>
                         </View>

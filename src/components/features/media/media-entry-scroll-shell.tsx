@@ -1,4 +1,5 @@
 import { Anime_Entry, Manga_Entry } from "@/api/generated/types"
+import { AnimeEntryView, AnimeEntryViewSwitcher } from "@/components/features/media/anime-entry-view-switcher"
 import { useIOSScrollRefreshRateWorkaround } from "@/hooks/use-ios-scroll-refresh-rate-workaround"
 import * as React from "react"
 import { RefreshControlProps, StyleProp, View, ViewStyle } from "react-native"
@@ -14,6 +15,10 @@ type MediaEntryScrollShellProps = {
     scrollY?: SharedValue<number>
     showHeaderBackground?: boolean
     onTitlePress?: () => void
+    currentView?: AnimeEntryView
+    onViewChange?: (view: AnimeEntryView) => void
+    isOffline?: boolean
+    hiddenViews?: Set<AnimeEntryView>
 }
 
 export function MediaEntryScrollShell({
@@ -25,6 +30,10 @@ export function MediaEntryScrollShell({
     scrollY: sharedScrollY,
     showHeaderBackground = true,
     onTitlePress,
+    currentView,
+    onViewChange,
+    isOffline,
+    hiddenViews,
 }: MediaEntryScrollShellProps) {
     const localScrollY = useSharedValue(0)
     const scrollY = sharedScrollY ?? localScrollY
@@ -51,6 +60,16 @@ export function MediaEntryScrollShell({
                 contentContainerStyle={[{ paddingBottom: 110 }, contentContainerStyle]}
             >
                 <MediaEntryHeaderContent entry={entry} type={type} onTitlePress={onTitlePress} />
+
+                {currentView && onViewChange && (
+                    <AnimeEntryViewSwitcher
+                        currentView={currentView}
+                        onViewChange={onViewChange}
+                        isOffline={isOffline}
+                        hiddenViews={hiddenViews}
+                    />
+                )}
+
                 <View style={{ width: "100%", alignSelf: "stretch" }}>
                     {children}
                 </View>

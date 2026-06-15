@@ -67,6 +67,7 @@ export function ContinueWatching(props: ContinueWatchingProps) {
                 watchHistory={watchHistory}
                 spoilerActive={continueWatchingSpoilerActive}
                 showAnimeTitle
+                cardWidth={180}
             />
         </Animated.View>
     )

@@ -28,8 +28,9 @@ function getErrorMessage(error: unknown) {
 
 function isMissingMpvViewError(error: unknown) {
     const message = getErrorMessage(error)
-    return message.includes("MpvSurfaceExpoView")
-        && (message.includes("Unable to find") || message.includes("cannot be cast"))
+    return (message.includes("MpvSurfaceExpoView")
+        && (message.includes("Unable to find") || message.includes("cannot be cast")))
+        || message.includes("ErrorGroupView")
 }
 
 function getMediaTitle(source: MobilePlaybackSource): string | undefined {

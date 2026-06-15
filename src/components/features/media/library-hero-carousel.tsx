@@ -2,6 +2,7 @@ import { Manga_Entry } from "@/api/generated/types"
 import { SeaImage } from "@/components/shared/sea-image"
 import { COLORS } from "@/constants/colors"
 import { ContinueWatchingItem } from "@/hooks/use-anime-library-collection"
+import { useShowSidebar } from "@/hooks/use-device"
 import { cn } from "@/lib/utils"
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { LinearGradient } from "expo-linear-gradient"
@@ -71,11 +72,12 @@ export function LibraryHeroCarousel({
     onWatchPress,
 }: LibraryHeroCarouselProps) {
     const { height: screenHeight, width: screenWidth } = useWindowDimensions()
+    const showSidebar = useShowSidebar()
+    const carouselWidth = showSidebar ? screenWidth - 80 : screenWidth
 
-    const isTablet = Platform.OS === "ios" ? Platform.isPad : Math.min(screenWidth, screenHeight) >= 600
-    const isSmallScreen = !isTablet && screenHeight < 750
-    const heroHeight = isSmallScreen ? 260 : isTablet ? 380 : 310
-    const titleFontSize = isSmallScreen ? 22 : isTablet ? 30 : 26
+    const isTV = Platform.isTV
+    const heroHeight = isTV ? Math.round(screenHeight * 0.60) : (screenHeight < 750 ? 260 : 310)
+    const titleFontSize = isTV ? 40 : (screenHeight < 750 ? 22 : 26)
 
     const items = React.useMemo<UnifiedHeroItem[]>(() => {
         if (type === "anime") {
@@ -126,13 +128,13 @@ export function LibraryHeroCarousel({
         (index: number, animated = true) => {
             if (items.length === 0) return
             const safeIndex = Math.max(0, Math.min(index, items.length - 1))
-            scrollRef.current?.scrollTo({ x: safeIndex * screenWidth, animated })
+            scrollRef.current?.scrollTo({ x: safeIndex * carouselWidth, animated })
             if (!animated) {
-                scrollX.set(safeIndex * screenWidth)
+                scrollX.set(safeIndex * carouselWidth)
             }
             setCurrentIndex(safeIndex)
         },
-        [items.length, screenWidth, scrollX],
+        [items.length, carouselWidth, scrollX],
     )
 
     React.useEffect(() => {
@@ -177,14 +179,14 @@ export function LibraryHeroCarousel({
         (event: any) => {
             if (items.length === 0) return
             const offsetX = event.nativeEvent?.contentOffset?.x ?? event.contentOffset?.x ?? 0
-            const nextIndex = Math.round(offsetX / screenWidth)
+            const nextIndex = Math.round(offsetX / carouselWidth)
 
             scrollX.set(offsetX)
             const clamped = Math.max(0, Math.min(nextIndex, items.length - 1))
             setCurrentIndex(clamped)
             isInteracting.current = false
         },
-        [items.length, screenWidth, scrollX],
+        [items.length, carouselWidth, scrollX],
     )
 
     const syncIndex = React.useCallback((nextIndex: number) => {
@@ -195,7 +197,7 @@ export function LibraryHeroCarousel({
         onScroll: event => {
             scrollX.value = event.contentOffset.x
 
-            const nextIndex = Math.round(event.contentOffset.x / Math.max(screenWidth, 1))
+            const nextIndex = Math.round(event.contentOffset.x / Math.max(carouselWidth, 1))
             const clamped = Math.max(0, Math.min(nextIndex, items.length - 1))
             runOnJS(syncIndex)(clamped)
         },
@@ -221,6 +223,10 @@ export function LibraryHeroCarousel({
         [type, onWatchPress],
     )
 
+    const [hasCarouselFocus, setHasCarouselFocus] = React.useState(false)
+    const handleCarouselFocus = React.useCallback(() => setHasCarouselFocus(true), [])
+    const handleCarouselBlur = React.useCallback(() => setHasCarouselFocus(false), [])
+
     if (items.length === 0) return null
 
     return (
@@ -228,7 +234,7 @@ export function LibraryHeroCarousel({
             <LibraryHeroBackdrop
                 items={items}
                 currentIndex={currentIndex}
-                screenWidth={screenWidth}
+                screenWidth={carouselWidth}
                 scrollX={scrollX}
                 scrollY={scrollY}
                 heroHeight={heroHeight}
@@ -255,34 +261,50 @@ export function LibraryHeroCarousel({
                         item={item}
                         index={idx}
                         scrollX={scrollX}
-                        screenWidth={screenWidth}
+                        screenWidth={carouselWidth}
                         type={type}
                         onActionPress={handleActionPress}
                         heroHeight={heroHeight}
                         titleFontSize={titleFontSize}
+                        currentIndex={currentIndex}
+                        onCarouselFocus={handleCarouselFocus}
+                        onCarouselBlur={handleCarouselBlur}
+                        hasCarouselFocus={hasCarouselFocus}
                     />
                 ))}
             </Animated.ScrollView>
 
             {items.length > 1 && (
                 <View
-                    className="absolute bottom-6 left-5 flex-row items-center gap-1.5"
+                    className={cn("absolute flex-row items-center", isTV ? "bottom-8 left-8 gap-2" : "bottom-6 left-5 gap-1.5")}
                     pointerEvents="none"
                 >
                     {items.map((_, idx) => (
-                        <Pressable key={idx} onPress={() => handleDotPress(idx)} hitSlop={10} pointerEvents="auto">
-                            <View
-                                className={cn(
-                                    "height-1 rounded-full transition-all duration-300",
-                                    idx === currentIndex ? "w-6 bg-white" : "w-2 bg-white/35",
-                                )}
-                                style={{ height: 3.5 }}
-                            />
-                        </Pressable>
+                        <HeroDot
+                            key={idx}
+                            index={idx}
+                            isActive={idx === currentIndex}
+                            isTV={isTV}
+                            onPress={() => handleDotPress(idx)}
+                        />
                     ))}
                 </View>
             )}
         </View>
+    )
+}
+
+function HeroDot({ isActive, isTV }: { index: number, isActive: boolean, isTV: boolean, onPress: () => void }) {
+    return (
+        <View
+            className={cn(
+                "rounded-full transition-all duration-300",
+                isActive
+                    ? isTV ? "w-8 bg-white" : "w-6 bg-white"
+                    : isTV ? "w-3 bg-white/35" : "w-2 bg-white/35",
+            )}
+            style={{ height: isTV ? 5 : 3.5 }}
+        />
     )
 }
 
@@ -295,6 +317,10 @@ function LibraryHeroSlide({
     onActionPress,
     heroHeight,
     titleFontSize,
+    currentIndex,
+    onCarouselFocus,
+    onCarouselBlur,
+    hasCarouselFocus,
 }: {
     item: UnifiedHeroItem
     index: number
@@ -304,7 +330,21 @@ function LibraryHeroSlide({
     onActionPress: (item: UnifiedHeroItem) => void
     heroHeight: number
     titleFontSize: number
+    currentIndex: number
+    onCarouselFocus: () => void
+    onCarouselBlur: () => void
+    hasCarouselFocus: boolean
 }) {
+    const isTV = Platform.isTV
+
+    const [btnFocused, setBtnFocused] = React.useState(false)
+    const showActiveStyle = isTV && (btnFocused || (index === currentIndex && hasCarouselFocus))
+    const btnScale = useSharedValue(1)
+    React.useEffect(() => {
+        btnScale.set(withTiming(btnFocused ? 1.08 : 1, { duration: 150 }))
+    }, [btnFocused, btnScale])
+    const btnAnimatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: btnScale.value }] }))
+
     const buttonLabel = type === "anime"
         ? `Watch Episode ${item.episodeNumber}`
         : item.progress && item.progress > 0
@@ -318,13 +358,13 @@ function LibraryHeroSlide({
         const distance = Math.abs(pageOffset)
 
         return {
-            opacity: interpolate(distance, [0, 0.6], [1, 0], Extrapolation.CLAMP),
+            opacity: interpolate(distance, [0, 0.5], [1, 0], Extrapolation.CLAMP),
             transform: [
                 {
-                    translateX: interpolate(
-                        pageOffset,
-                        [-1, 0, 1],
-                        [50, 0, -50],
+                    scale: interpolate(
+                        distance,
+                        [0, 0.5],
+                        [1, 0.94],
                         Extrapolation.CLAMP,
                     ),
                 },
@@ -347,7 +387,7 @@ function LibraryHeroSlide({
             <Animated.View
                 pointerEvents="box-none"
                 style={animatedContentStyle}
-                className="px-5 pb-16 flex flex-col gap-2.5 justify-end"
+                className={cn("flex flex-col gap-2.5 justify-end", isTV ? "px-8 pb-20" : "px-5 pb-16")}
             >
                 <Pressable
                     onPress={() => {
@@ -367,9 +407,9 @@ function LibraryHeroSlide({
                     {item.genres.map((genre, idx) => (
                         <React.Fragment key={genre}>
                             {idx > 0 && (
-                                <Text className="text-white/20 text-[10px] font-bold"> • </Text>
+                                <Text className={cn("font-bold", isTV ? "text-sm text-white/20" : "text-[10px]")}> • </Text>
                             )}
-                            <Text className="text-white/55 text-[11px] font-semibold tracking-wider uppercase">
+                            <Text className={cn("font-semibold tracking-wider uppercase", isTV ? "text-sm text-white/55" : "text-[11px]")}>
                                 {genre}
                             </Text>
                         </React.Fragment>
@@ -378,14 +418,34 @@ function LibraryHeroSlide({
 
                 <View className="flex-row mt-1" pointerEvents="box-none">
                     <Pressable
+                        focusable={isTV}
+                        hasTVPreferredFocus={isTV && index === 0}
+                        onFocus={() => {
+                            setBtnFocused(true)
+                            onCarouselFocus()
+                        }}
+                        onBlur={() => {
+                            setBtnFocused(false)
+                            onCarouselBlur()
+                        }}
                         onPress={() => onActionPress(item)}
-                        className="flex-row items-center bg-white active:bg-white/85 px-4.5 py-2.5 rounded-xl gap-2 shadow-md transition-all"
-                        android_ripple={{ color: "rgba(0,0,0,0.1)" }}
+                        android_ripple={{ color: "rgba(255,255,255,0.1)" }}
                     >
-                        <Ionicons name={iconName} size={13} color="black" />
-                        <Text className="text-black text-xs font-bold tracking-tight">
-                            {buttonLabel}
-                        </Text>
+                        <Animated.View
+                            className={cn(
+                                "flex-row items-center rounded-xl gap-2 shadow-md transition-all duration-300",
+                                isTV ? "px-6 py-3.5" : "px-4.5 py-2.5",
+                                showActiveStyle && isTV
+                                    ? "bg-white border-2 border-brand-400/80 shadow-2xl"
+                                    : "bg-white/10",
+                            )}
+                            style={isTV ? btnAnimatedStyle : undefined}
+                        >
+                            <Ionicons name={iconName} size={isTV ? 18 : 13} color={showActiveStyle && isTV ? "black" : "rgba(255,255,255,0.5)"} />
+                            <Text className={cn("font-bold tracking-tight", isTV ? "text-base" : "text-xs", showActiveStyle && isTV ? "text-black" : "text-white/50")}>
+                                {buttonLabel}
+                            </Text>
+                        </Animated.View>
                     </Pressable>
                 </View>
             </Animated.View>

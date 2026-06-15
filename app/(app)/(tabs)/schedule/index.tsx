@@ -3,7 +3,6 @@ import { useGetAnimeCollectionSchedule } from "@/api/hooks/anime_collection.hook
 import { useAnilistAnimeEntryListDataAtom } from "@/atoms/anilist-collection.atoms"
 import { ScheduleSettings, scheduleSettingsAtom } from "@/atoms/schedule.atoms"
 import { MediaEntryCard } from "@/components/features/media/media-entry-card"
-import { SafeView } from "@/components/layout/layout-view"
 import { TabFadeView } from "@/components/layout/tab-fade-view"
 import { LabeledSwitch } from "@/components/shared/labeled-switch"
 import { OfflineBanner } from "@/components/shared/offline-banner"
@@ -11,6 +10,7 @@ import { RowDivider } from "@/components/shared/row-divider"
 import { Surface } from "@/components/shared/surface"
 import { SeaBottomSheet } from "@/components/ui/bottom-sheet"
 import { useIOSScrollRefreshRateWorkaround } from "@/hooks/use-ios-scroll-refresh-rate-workaround"
+import { useIsTV } from "@/hooks/use-device"
 import { useIsServerConnected } from "@/lib/offline"
 import { cn } from "@/lib/utils"
 import Ionicons from "@expo/vector-icons/Ionicons"
@@ -19,13 +19,14 @@ import { router } from "expo-router"
 import { useAtom } from "jotai/react"
 import sortBy from "lodash/sortBy"
 import * as React from "react"
-import { ActivityIndicator, Dimensions, FlatList, Pressable, RefreshControl, ScrollView, Text, View } from "react-native"
-import Animated, { FadeIn } from "react-native-reanimated"
+import { ActivityIndicator, Dimensions, FlatList, Platform, Pressable, RefreshControl, ScrollView, Text, View } from "react-native"
+import Animated, { FadeIn, useAnimatedStyle, useSharedValue, withSpring } from "react-native-reanimated"
 
-const { width: SCREEN_WIDTH } = Dimensions.get("screen")
-const NUM_COLUMNS = 3
-const GRID_SPACING = 10
-const GRID_PADDING = 14
+const SCREEN_WIDTH = Dimensions.get("screen").width
+const isTV = Platform.isTV
+const NUM_COLUMNS = isTV ? 5 : 3
+const GRID_SPACING = isTV ? 16 : 10
+const GRID_PADDING = isTV ? 28 : 14
 const CARD_WIDTH = (SCREEN_WIDTH - (NUM_COLUMNS - 1) * GRID_SPACING - 2 * GRID_PADDING) / NUM_COLUMNS
 const ROW_HEIGHT = CARD_WIDTH * 1.5 + GRID_SPACING
 
@@ -129,32 +130,42 @@ export default function ScheduleScreen() {
     ) : undefined
 
     return (
-        <TabFadeView>
-            <SafeView>
-                <OfflineBanner />
+        <View className="flex-1 bg-background">
+            <OfflineBanner />
+            <TabFadeView>
 
-                <View className="flex-row items-center justify-between px-4 pt-2 pb-1">
-                    <Pressable onPress={goToToday} className="p-2" hitSlop={12}>
-                        <Ionicons name="today-outline" size={22} color="rgba(255,255,255,0.8)" />
-                    </Pressable>
+                <View className={cn("flex-row items-center justify-between", isTV ? "px-6 pt-4 pb-2" : "px-4 pt-2 pb-1")}>
+                    <TvFocusablePressable onPress={goToToday} scaleAmount={1.1} hitSlop={12}>
+                        <View className="p-2">
+                            <Ionicons name="today-outline" size={isTV ? 28 : 22} color="rgba(255,255,255,0.8)" />
+                        </View>
+                    </TvFocusablePressable>
 
-                    <View className="flex-row items-center gap-3">
-                        <Pressable onPress={goToPreviousWeek} hitSlop={12} className="p-1">
-                            <Ionicons name="chevron-back" size={20} color="rgba(255,255,255,0.6)" />
-                        </Pressable>
-                        <Pressable onPress={() => setMonthPickerOpen(true)} hitSlop={8}>
-                            <Text className="text-base font-semibold text-white/90">
-                                {monthYearLabel}
-                            </Text>
-                        </Pressable>
-                        <Pressable onPress={goToNextWeek} hitSlop={12} className="p-1">
-                            <Ionicons name="chevron-forward" size={20} color="rgba(255,255,255,0.6)" />
-                        </Pressable>
+                    <View className={cn("flex-row items-center", isTV ? "gap-5" : "gap-3")}>
+                        <TvFocusablePressable onPress={goToPreviousWeek} scaleAmount={1.1} hitSlop={12}>
+                            <View className="p-1">
+                                <Ionicons name="chevron-back" size={isTV ? 26 : 20} color="rgba(255,255,255,0.6)" />
+                            </View>
+                        </TvFocusablePressable>
+                        <TvFocusablePressable onPress={() => setMonthPickerOpen(true)} scaleAmount={1.03} hitSlop={8}>
+                            <View className="px-2 py-1 rounded-lg">
+                                <Text className={cn("font-semibold text-white/90", isTV ? "text-2xl" : "text-base")}>
+                                    {monthYearLabel}
+                                </Text>
+                            </View>
+                        </TvFocusablePressable>
+                        <TvFocusablePressable onPress={goToNextWeek} scaleAmount={1.1} hitSlop={12}>
+                            <View className="p-1">
+                                <Ionicons name="chevron-forward" size={isTV ? 26 : 20} color="rgba(255,255,255,0.6)" />
+                            </View>
+                        </TvFocusablePressable>
                     </View>
 
-                    <Pressable onPress={() => setSettingsOpen(true)} className="p-2" hitSlop={12}>
-                        <Ionicons name="options-outline" size={22} color="rgba(255,255,255,0.8)" />
-                    </Pressable>
+                    <TvFocusablePressable onPress={() => setSettingsOpen(true)} scaleAmount={1.1} hitSlop={12}>
+                        <View className="p-2">
+                            <Ionicons name="options-outline" size={isTV ? 28 : 22} color="rgba(255,255,255,0.8)" />
+                        </View>
+                    </TvFocusablePressable>
                 </View>
 
                 <WeekDaySelector
@@ -207,8 +218,8 @@ export default function ScheduleScreen() {
                     currentDate={selectedDate}
                     onSelect={jumpToMonth}
                 />
-            </SafeView>
-        </TabFadeView>
+            </TabFadeView>
+        </View>
     )
 }
 
@@ -219,6 +230,56 @@ type ScheduleEvent = Anime_ScheduleItem & {
 ///////////////////////////////////////////////////////////////////////////////
 // Helpers
 ///////////////////////////////////////////////////////////////////////////////
+
+function TvFocusablePressable({
+    children,
+    onPress,
+    scaleAmount = 1.05,
+    className = "",
+    style,
+    hitSlop,
+    ...props
+}: {
+    children: React.ReactNode
+    onPress?: () => void
+    scaleAmount?: number
+    className?: string
+    style?: any
+    hitSlop?: number
+}) {
+    const isTV = useIsTV()
+    const [isFocused, setIsFocused] = React.useState(false)
+    const scale = useSharedValue(1)
+
+    React.useEffect(() => {
+        scale.set(withSpring(isFocused ? scaleAmount : 1, { damping: 15, stiffness: 200 }))
+    }, [isFocused, scale, scaleAmount])
+
+    const animatedStyle = useAnimatedStyle(() => ({
+        transform: [{ scale: scale.value }],
+    }))
+
+    return (
+        <Pressable
+            focusable={isTV}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
+            onPress={onPress}
+            hitSlop={hitSlop}
+            {...props}
+        >
+            <Animated.View
+                className={cn(
+                    className,
+                    isFocused && isTV ? "border border-brand-400/60" : "",
+                )}
+                style={isTV ? [style, animatedStyle] : style}
+            >
+                {children}
+            </Animated.View>
+        </Pressable>
+    )
+}
 
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
@@ -233,10 +294,11 @@ function WeekDaySelector({
     onSelectDate: (date: Date) => void
     getEventCount: (date: Date) => number
 }) {
+    const isTV = useIsTV()
     const today = new Date()
 
     return (
-        <View className="flex-row justify-around px-2 py-3">
+        <View className={cn("flex-row justify-around", isTV ? "px-4 py-4" : "px-2 py-3")}>
             {weekDays.map((day, i) => {
                 const isToday = isSameDay(day, today)
                 const isSelected = isSameDay(day, selectedDate)
@@ -244,55 +306,113 @@ function WeekDaySelector({
                 const dayNumber = format(day, "d")
 
                 return (
-                    <Pressable
+                    <WeekDayItem
                         key={i}
-                        className="items-center flex-1"
-                        onPress={() => onSelectDate(day)}
-                        hitSlop={4}
-                    >
-                        <Text
-                            className={cn(
-                                "text-xs font-medium mb-1.5",
-                                isSelected ? "text-white" : "text-white/40",
-                            )}
-                        >
-                            {DAY_LABELS[i]}
-                        </Text>
-
-                        <View
-                            className={cn(
-                                "size-9 items-center justify-center border border-transparent",
-                                isSelected && isToday && "bg-white",
-                                isSelected && !isToday && "bg-white/40",
-                                !isSelected && isToday && "border-white/30",
-                                "rounded-full",
-                            )}
-                        >
-                            <Text
-                                className={cn(
-                                    "text-sm font-bold",
-                                    !isSelected ? (isToday ? "text-white" : "text-white/60") : "text-black",
-                                )}
-                            >
-                                {dayNumber}
-                            </Text>
-                        </View>
-
-                        {count > 0 && (
-                            <Text
-                                className={cn(
-                                    "text-[10px] mt-1 font-semibold",
-                                    isSelected ? "text-brand-300" : "text-white/30",
-                                )}
-                            >
-                                {count}
-                            </Text>
-                        )}
-                        {count === 0 && <View className="h-3.5" />}
-                    </Pressable>
+                        day={day}
+                        dayIndex={i}
+                        isToday={isToday}
+                        isSelected={isSelected}
+                        count={count}
+                        dayNumber={dayNumber}
+                        onSelect={onSelectDate}
+                        isTV={isTV}
+                    />
                 )
             })}
         </View>
+    )
+}
+
+function WeekDayItem({
+    day,
+    dayIndex,
+    isToday,
+    isSelected,
+    count,
+    dayNumber,
+    onSelect,
+    isTV,
+}: {
+    day: Date
+    dayIndex: number
+    isToday: boolean
+    isSelected: boolean
+    count: number
+    dayNumber: string
+    onSelect: (date: Date) => void
+    isTV: boolean
+}) {
+    const [isFocused, setIsFocused] = React.useState(false)
+    const scale = useSharedValue(1)
+
+    React.useEffect(() => {
+        scale.set(withSpring(isFocused ? 1.12 : 1, { damping: 15, stiffness: 200 }))
+    }, [isFocused, scale])
+
+    const animatedStyle = useAnimatedStyle(() => ({
+        transform: [{ scale: scale.value }],
+    }))
+
+    return (
+        <Pressable
+            focusable={isTV}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
+            className="items-center flex-1"
+            onPress={() => onSelect(day)}
+            hitSlop={4}
+        >
+            <Animated.View
+                className={cn(
+                    "items-center",
+                    isFocused && isTV ? "rounded-xl bg-white/5 px-2 py-1" : "",
+                )}
+                style={isTV ? animatedStyle : undefined}
+            >
+                <Text
+                    className={cn(
+                        "font-medium mb-1.5",
+                        isTV ? "text-sm" : "text-xs",
+                        isSelected ? "text-white" : "text-white/40",
+                    )}
+                >
+                    {DAY_LABELS[dayIndex]}
+                </Text>
+
+                <View
+                    className={cn(
+                        "items-center justify-center border border-transparent rounded-full",
+                        isTV ? "size-12" : "size-9",
+                        isSelected && isToday && "bg-white",
+                        isSelected && !isToday && "bg-white/40",
+                        !isSelected && isToday && "border-white/30",
+                    )}
+                >
+                    <Text
+                        className={cn(
+                            "font-bold",
+                            isTV ? "text-lg" : "text-sm",
+                            !isSelected ? (isToday ? "text-white" : "text-white/60") : "text-black",
+                        )}
+                    >
+                        {dayNumber}
+                    </Text>
+                </View>
+
+                {count > 0 && (
+                    <Text
+                        className={cn(
+                            "mt-1 font-semibold",
+                            isTV ? "text-xs" : "text-[10px]",
+                            isSelected ? "text-brand-300" : "text-white/30",
+                        )}
+                    >
+                        {count}
+                    </Text>
+                )}
+                {count === 0 && <View className={isTV ? "h-4" : "h-3.5"} />}
+            </Animated.View>
+        </Pressable>
     )
 }
 
@@ -306,12 +426,13 @@ function ScheduleGrid({
     settings: ScheduleSettings
     refreshControl: React.ReactElement<React.ComponentProps<typeof RefreshControl>> | undefined
 }) {
+    const isTV = useIsTV()
     const getItemLayout = React.useCallback((_: ArrayLike<ScheduleEvent> | null | undefined, index: number) => {
         const rowIndex = Math.floor(index / NUM_COLUMNS)
 
         return {
             length: ROW_HEIGHT,
-            offset: 8 + (rowIndex * ROW_HEIGHT),
+            offset: (isTV ? 16 : 8) + (rowIndex * ROW_HEIGHT),
             index,
         }
     }, [])
@@ -331,12 +452,12 @@ function ScheduleGrid({
                 maxToRenderPerBatch={NUM_COLUMNS * 2}
                 updateCellsBatchingPeriod={16}
                 windowSize={7}
-                removeClippedSubviews
+                removeClippedSubviews={!isTV}
                 contentContainerStyle={{
                     gap: GRID_SPACING,
                     paddingHorizontal: GRID_PADDING,
                     paddingBottom: 80,
-                    paddingTop: 8,
+                    paddingTop: isTV ? 16 : 8,
                 }}
                 columnWrapperStyle={{ gap: GRID_SPACING }}
                 refreshControl={refreshControl}
@@ -353,6 +474,7 @@ function ScheduleCardWrapper({
     item: ScheduleEvent
     settings: ScheduleSettings
 }) {
+    const isTV = useIsTV()
     const media: AL_BaseAnime = React.useMemo(() => ({
         id: item.mediaId,
         coverImage: { large: item.image, extraLarge: item.image },
@@ -379,21 +501,21 @@ function ScheduleCardWrapper({
                 overlay={<View className="absolute top-0 left-0 right-0 z-10" style={{ height: CARD_WIDTH * 1.275 }} pointerEvents="none">
                     <View className="absolute top-1.5 left-1.5 flex-row items-center gap-1">
                         <View className="bg-black/70 rounded px-1.5 py-0.5">
-                            <Text className="text-[11px] font-bold text-gray-200">
+                            <Text className={cn("font-bold text-gray-200", isTV ? "text-sm" : "text-[11px]")}>
                                 {localTime}
                             </Text>
                         </View>
                     </View>
 
-                    <View className="absolute top-1.5 right-1.5 bg-black/70 rounded px-1.5 py-0.5">
-                        <Text className="text-[11px] font-bold text-white/80">
+                    <View className={cn("absolute top-1.5 right-1.5 bg-black/70 rounded px-1.5 py-0.5", isTV ? "px-2 py-1" : "")}>
+                        <Text className={cn("font-bold text-white/80", isTV ? "text-sm" : "text-[11px]")}>
                             {item.isSeasonFinale && !item.isMovie && "FIN. "}{item.isMovie ? "Movie" : "Ep. " + item.episodeNumber}
                         </Text>
                     </View>
 
                     {isWatchedAndDimmed && (
-                        <View className="absolute bottom-1.5 right-1.5 bg-black/70 rounded-full p-1">
-                            <Ionicons name="checkmark" size={12} color="rgba(255,255,255,0.5)" />
+                        <View className={cn("absolute bottom-1.5 right-1.5 bg-black/70 rounded-full", isTV ? "p-1.5" : "p-1")}>
+                            <Ionicons name="checkmark" size={isTV ? 16 : 12} color="rgba(255,255,255,0.5)" />
                         </View>
                     )}
                 </View>}
@@ -422,6 +544,7 @@ function ScheduleSettingsSheet({
     settings: ScheduleSettings
     onSettingsChange: (update: ScheduleSettings | ((prev: ScheduleSettings) => ScheduleSettings)) => void
 }) {
+    const isTV = useIsTV()
     function toggleStatus(status: AL_MediaListStatus) {
         onSettingsChange((prev) => {
             const current = prev.listStatuses
@@ -448,24 +571,19 @@ function ScheduleSettingsSheet({
         >
             <View className="gap-5">
                 <View className="gap-2">
-                    <Text className="text-sm font-medium text-white/50">Filter by status</Text>
+                    <Text className={cn("font-medium text-white/50", isTV ? "text-base" : "text-sm")}>Filter by status</Text>
                     <Surface variant="muted" className="overflow-hidden">
                         {STATUS_OPTIONS.map((opt, i) => {
                             const active = settings.listStatuses.includes(opt.value)
                             return (
                                 <React.Fragment key={opt.value}>
                                     {i > 0 && <RowDivider />}
-                                    <Pressable
+                                    <SettingsStatusItem
+                                        label={opt.label}
+                                        active={active}
                                         onPress={() => toggleStatus(opt.value)}
-                                        className="flex-row items-center justify-between px-4 py-3"
-                                    >
-                                        <Text className={cn("text-sm", active ? "text-white" : "text-white/50")}>
-                                            {opt.label}
-                                        </Text>
-                                        {active && (
-                                            <Ionicons name="checkmark" size={18} color="rgb(97,82,223)" />
-                                        )}
-                                    </Pressable>
+                                        isTV={isTV}
+                                    />
                                 </React.Fragment>
                             )
                         })}
@@ -485,6 +603,51 @@ function ScheduleSettingsSheet({
     )
 }
 
+function SettingsStatusItem({
+    label,
+    active,
+    onPress,
+    isTV,
+}: {
+    label: string
+    active: boolean
+    onPress: () => void
+    isTV: boolean
+}) {
+    const [isFocused, setIsFocused] = React.useState(false)
+    const scale = useSharedValue(1)
+
+    React.useEffect(() => {
+        scale.set(withSpring(isFocused ? 1.02 : 1, { damping: 15, stiffness: 200 }))
+    }, [isFocused, scale])
+
+    const animatedStyle = useAnimatedStyle(() => ({
+        transform: [{ scale: scale.value }],
+    }))
+
+    return (
+        <Pressable
+            focusable={isTV}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
+            onPress={onPress}
+            className="flex-row items-center justify-between px-4 py-3"
+        >
+            <Animated.View
+                className={cn("flex-1 flex-row items-center justify-between", isFocused && isTV ? "rounded-lg bg-white/5 px-2" : "")}
+                style={isTV ? animatedStyle : undefined}
+            >
+                <Text className={cn("", isTV ? "text-base" : "text-sm", active ? "text-white" : "text-white/50")}>
+                    {label}
+                </Text>
+                {active && (
+                    <Ionicons name="checkmark" size={isTV ? 22 : 18} color="rgb(97,82,223)" />
+                )}
+            </Animated.View>
+        </Pressable>
+    )
+}
+
 const MONTHS = [
     "Jan", "Feb", "Mar", "Apr", "May", "Jun",
     "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
@@ -501,6 +664,7 @@ function MonthYearPicker({
     currentDate: Date
     onSelect: (year: number, month: number) => void
 }) {
+    const isTV = useIsTV()
     const [displayYear, setDisplayYear] = React.useState(() => currentDate.getFullYear())
 
     // reset to the current date's year when the sheet opens
@@ -522,46 +686,96 @@ function MonthYearPicker({
         >
             <View className="gap-4">
                 <View className="flex-row items-center justify-center gap-5">
-                    <Pressable onPress={() => setDisplayYear((y) => y - 1)} hitSlop={12} className="p-2">
-                        <Ionicons name="chevron-back" size={22} color="rgba(255,255,255,0.6)" />
-                    </Pressable>
-                    <Text className="text-xl font-bold text-white min-w-[60px] text-center">
+                    <TvFocusablePressable onPress={() => setDisplayYear((y) => y - 1)} scaleAmount={1.1} hitSlop={12}>
+                        <View className="p-2">
+                            <Ionicons name="chevron-back" size={isTV ? 28 : 22} color="rgba(255,255,255,0.6)" />
+                        </View>
+                    </TvFocusablePressable>
+                    <Text className={cn("font-bold text-white min-w-[60px] text-center", isTV ? "text-2xl" : "text-xl")}>
                         {displayYear}
                     </Text>
-                    <Pressable onPress={() => setDisplayYear((y) => y + 1)} hitSlop={12} className="p-2">
-                        <Ionicons name="chevron-forward" size={22} color="rgba(255,255,255,0.6)" />
-                    </Pressable>
+                    <TvFocusablePressable onPress={() => setDisplayYear((y) => y + 1)} scaleAmount={1.1} hitSlop={12}>
+                        <View className="p-2">
+                            <Ionicons name="chevron-forward" size={isTV ? 28 : 22} color="rgba(255,255,255,0.6)" />
+                        </View>
+                    </TvFocusablePressable>
                 </View>
 
-                <View className="flex-row flex-wrap justify-center gap-2 px-2">
+                <View className={cn("flex-row flex-wrap justify-center gap-2", isTV ? "px-4" : "px-2")}>
                     {MONTHS.map((label, monthIndex) => {
                         const isCurrentSelection = displayYear === currentYear && monthIndex === currentMonth
                         const isToday = displayYear === todayYear && monthIndex === todayMonth
 
                         return (
-                            <Pressable
+                            <MonthItem
                                 key={monthIndex}
+                                label={label}
+                                monthIndex={monthIndex}
+                                isCurrentSelection={isCurrentSelection}
+                                isToday={isToday}
+                                isTV={isTV}
                                 onPress={() => onSelect(displayYear, monthIndex)}
-                                className={cn(
-                                    "w-[23%] items-center justify-center rounded-lg py-3",
-                                    isCurrentSelection && "bg-brand-500",
-                                    !isCurrentSelection && isToday && "border border-white/20",
-                                    !isCurrentSelection && !isToday && "bg-white/[0.04]",
-                                )}
-                            >
-                                <Text
-                                    className={cn(
-                                        "text-sm font-semibold",
-                                        isCurrentSelection ? "text-black" : isToday ? "text-black" : "text-white/60",
-                                    )}
-                                >
-                                    {label}
-                                </Text>
-                            </Pressable>
+                            />
                         )
                     })}
                 </View>
             </View>
         </SeaBottomSheet>
+    )
+}
+
+function MonthItem({
+    label,
+    monthIndex,
+    isCurrentSelection,
+    isToday,
+    isTV,
+    onPress,
+}: {
+    label: string
+    monthIndex: number
+    isCurrentSelection: boolean
+    isToday: boolean
+    isTV: boolean
+    onPress: () => void
+}) {
+    const [isFocused, setIsFocused] = React.useState(false)
+    const scale = useSharedValue(1)
+
+    React.useEffect(() => {
+        scale.set(withSpring(isFocused ? 1.08 : 1, { damping: 15, stiffness: 200 }))
+    }, [isFocused, scale])
+
+    const animatedStyle = useAnimatedStyle(() => ({
+        transform: [{ scale: scale.value }],
+    }))
+
+    return (
+        <Pressable
+            focusable={isTV}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
+            onPress={onPress}
+            className={cn(
+                "items-center justify-center rounded-lg",
+                isTV ? "w-[23%] py-4" : "w-[23%] py-3",
+                isCurrentSelection && "bg-brand-500",
+                !isCurrentSelection && isToday && "border border-white/20",
+                !isCurrentSelection && !isToday && "bg-white/[0.04]",
+            )}
+        >
+            <Animated.View style={isTV ? animatedStyle : undefined}>
+                <Text
+                    className={cn(
+                        "font-semibold",
+                        isTV ? "text-base" : "text-sm",
+                        isCurrentSelection ? "text-black" : isToday ? "text-black" : "text-white/60",
+                        isFocused && isTV && !isCurrentSelection ? "text-white" : "",
+                    )}
+                >
+                    {label}
+                </Text>
+            </Animated.View>
+        </Pressable>
     )
 }

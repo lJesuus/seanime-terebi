@@ -5,7 +5,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     name: "Seanime",
     slug: "seanime-app",
     version: "0.1.20",
-    orientation: "portrait",
+    orientation: "default",
     icon: "./src/assets/images/icon.png",
     scheme: "seanime",
     userInterfaceStyle: "automatic",
@@ -66,6 +66,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
             "WRITE_SETTINGS",
         ],
         package: "app.seanime.tenji",
+        supportsTV: true,
     } as any,
     plugins: [
         "expo-router",

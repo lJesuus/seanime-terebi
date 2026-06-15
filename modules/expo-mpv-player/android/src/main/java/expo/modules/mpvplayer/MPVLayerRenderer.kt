@@ -80,65 +80,87 @@ class MPVLayerRenderer(private val context: Context) : MPVLib.EventObserver {
     fun start() {
         if (initialized) return
 
-        MPVLib.create(context)
+        try {
+            MPVLib.create(context)
+        } catch (e: Throwable) {
+            Log.e(TAG, "Failed to create mpv instance", e)
+            return
+        }
 
         // video output
-        MPVLib.setOptionString("vo", "gpu")
-        MPVLib.setOptionString("gpu-context", "android")
-        MPVLib.setOptionString("opengl-es", "yes")
+        trySetOption("vo", "gpu")
+        trySetOption("gpu-context", "android")
+        trySetOption("cscale", "mitchell")
 
         // hardware decoding
-        MPVLib.setOptionString("hwdec", "mediacodec-copy")
-        MPVLib.setOptionString("hwdec-codecs", "h264,hevc,mpeg4,mpeg2video,vp8,vp9,av1")
+        trySetOption("hwdec", "mediacodec-copy")
+        trySetOption("hwdec-codecs", "h264,hevc,mpeg4,mpeg2video,vp8,vp9,av1")
 
         // cache & demuxer
-        MPVLib.setOptionString("cache", "yes")
-        MPVLib.setOptionString("cache-pause-initial", "yes")
-        MPVLib.setOptionString("demuxer-max-bytes", "150MiB")
-        MPVLib.setOptionString("demuxer-max-back-bytes", "75MiB")
-        MPVLib.setOptionString("demuxer-readahead-secs", "20")
+        trySetOption("cache", "yes")
+        trySetOption("cache-pause-initial", "yes")
+        trySetOption("demuxer-max-bytes", "150MiB")
+        trySetOption("demuxer-max-back-bytes", "75MiB")
+        trySetOption("demuxer-readahead-secs", "20")
 
         // progressive streams should still accept range seeks when mpv cannot infer it
-        MPVLib.setOptionString("demuxer-seekable-cache", "yes")
-        MPVLib.setOptionString("force-seekable", "yes")
+        trySetOption("demuxer-seekable-cache", "yes")
+        trySetOption("force-seekable", "yes")
 
         // exact seeking avoids Android keyframe seeks replaying the same segment
-        MPVLib.setOptionString("hr-seek", "yes")
-        MPVLib.setOptionString("hr-seek-framedrop", "yes")
+        trySetOption("hr-seek", "yes")
+        trySetOption("hr-seek-framedrop", "yes")
 
         // subtitles
-        MPVLib.setOptionString("sub-scale-with-window", "no")
-        MPVLib.setOptionString("sub-use-margins", "no")
-        MPVLib.setOptionString("subs-match-os-language", "yes")
-        MPVLib.setOptionString("subs-fallback", "yes")
-        MPVLib.setOptionString("sub-auto", "fuzzy")
-        MPVLib.setOptionString("sub-font-size", "48")
-        MPVLib.setOptionString("sub-ass-override", "no")
-        MPVLib.setOptionString("sub-ass-force-margins", "yes")
+        trySetOption("sub-scale-with-window", "no")
+        trySetOption("sub-use-margins", "no")
+        trySetOption("subs-match-os-language", "yes")
+        trySetOption("subs-fallback", "yes")
+        trySetOption("sub-auto", "fuzzy")
+        trySetOption("sub-font-size", "48")
+        trySetOption("sub-ass-override", "no")
+        trySetOption("sub-ass-force-margins", "yes")
 
         // network reconnection
-        MPVLib.setOptionString("stream-lavf-o", "reconnect=1,reconnect_streamed=1,reconnect_delay_max=5")
+        trySetOption("stream-lavf-o", "reconnect=1,reconnect_streamed=1,reconnect_delay_max=5")
 
         // playback behavior
-        MPVLib.setOptionString("force-window", "no")
-        MPVLib.setOptionString("keep-open", "always")
+        trySetOption("force-window", "no")
+        trySetOption("keep-open", "always")
 
         // aspect ratio
-        MPVLib.setOptionString("keepaspect", "yes")
-        MPVLib.setOptionString("video-zoom", "0")
+        trySetOption("keepaspect", "yes")
+        trySetOption("video-zoom", "0")
+
+        // debug logging
+        trySetOption("log-file", "/data/data/app.seanime.tenji/cache/mpv.log")
+        trySetOption("msg-level", "all=v")
 
         // start paused
-        MPVLib.setOptionString("pause", "yes")
+        trySetOption("pause", "yes")
 
         // config dir with subfont.ttf
         setupConfigDir()
 
-        MPVLib.init()
-        MPVLib.addObserver(this)
-        observeProperties()
+        try {
+            MPVLib.init()
+            MPVLib.addObserver(this)
+            observeProperties()
+        } catch (e: Throwable) {
+            Log.e(TAG, "Failed to initialize mpv", e)
+            return
+        }
 
         initialized = true
         Log.d(TAG, "mpv started")
+    }
+
+    private fun trySetOption(name: String, value: String) {
+        try {
+            MPVLib.setOptionString(name, value)
+        } catch (e: Throwable) {
+            Log.w(TAG, "Failed to set mpv option: $name=$value", e)
+        }
     }
 
     fun stop() {
@@ -219,8 +241,12 @@ class MPVLayerRenderer(private val context: Context) : MPVLib.EventObserver {
     ) {
         if (!initialized) return
 
-        // stop any current playback
-        MPVLib.command(arrayOf("stop"))
+        try {
+            // stop any current playback
+            MPVLib.command(arrayOf("stop"))
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to stop current playback", e)
+        }
 
         // reset state
         cachedPosition = 0.0
@@ -235,29 +261,34 @@ class MPVLayerRenderer(private val context: Context) : MPVLib.EventObserver {
         currentHeaders = headers
         pendingExternalSubtitles = externalSubtitles
 
-        // http headers
-        if (!headers.isNullOrEmpty()) {
-            val headerStr = headers.entries.joinToString("\r\n") { "${it.key}: ${it.value}" }
-            MPVLib.setPropertyString("http-header-fields", headerStr)
-        } else {
-            MPVLib.setPropertyString("http-header-fields", "")
+        try {
+            // http headers
+            if (!headers.isNullOrEmpty()) {
+                val headerStr = headers.entries.joinToString("\r\n") { "${it.key}: ${it.value}" }
+                MPVLib.setPropertyString("http-header-fields", headerStr)
+            } else {
+                MPVLib.setPropertyString("http-header-fields", "")
+            }
+
+            // start position
+            if (startPosition != null && startPosition > 0) {
+                MPVLib.setPropertyString("start", formatMpvSeconds(startPosition))
+            } else {
+                MPVLib.setPropertyString("start", "0")
+            }
+
+            // if external subs are pending, disable auto-selection until they're added on FILE_LOADED
+            if (!externalSubtitles.isNullOrEmpty()) {
+                MPVLib.setPropertyString("sid", "no")
+            }
+
+            MPVLib.setPropertyDouble("video-zoom", log2(requestedVideoZoomScale.coerceAtLeast(1.0)))
+
+            MPVLib.command(arrayOf("loadfile", url, "replace"))
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to load file: $url", e)
+            delegate?.onError("Failed to load file: ${e.message}")
         }
-
-        // start position
-        if (startPosition != null && startPosition > 0) {
-            MPVLib.setPropertyString("start", formatMpvSeconds(startPosition))
-        } else {
-            MPVLib.setPropertyString("start", "0")
-        }
-
-        // if external subs are pending, disable auto-selection until they're added on FILE_LOADED
-        if (!externalSubtitles.isNullOrEmpty()) {
-            MPVLib.setPropertyString("sid", "no")
-        }
-
-        MPVLib.setPropertyDouble("video-zoom", log2(requestedVideoZoomScale.coerceAtLeast(1.0)))
-
-        MPVLib.command(arrayOf("loadfile", url, "replace"))
     }
 
     // -------------------------------------------------------------------
@@ -770,22 +801,26 @@ class MPVLayerRenderer(private val context: Context) : MPVLib.EventObserver {
     }
 
     private fun setupConfigDir() {
-        val mpvDir = File(context.filesDir, "mpv")
-        if (!mpvDir.exists()) mpvDir.mkdirs()
-
-        // copy subfont.ttf from assets if available
         try {
-            val input = context.assets.open("subfont.ttf")
-            val output = FileOutputStream(File(mpvDir, "subfont.ttf"))
-            input.copyTo(output)
-            input.close()
-            output.close()
-        } catch (_: Exception) {
-            // asset not bundled, skip
-        }
+            val mpvDir = File(context.filesDir, "mpv")
+            if (!mpvDir.exists()) mpvDir.mkdirs()
 
-        MPVLib.setOptionString("config", "yes")
-        MPVLib.setOptionString("config-dir", mpvDir.path)
+            // copy subfont.ttf from assets if available
+            try {
+                val input = context.assets.open("subfont.ttf")
+                val output = FileOutputStream(File(mpvDir, "subfont.ttf"))
+                input.copyTo(output)
+                input.close()
+                output.close()
+            } catch (_: Exception) {
+                // asset not bundled, skip
+            }
+
+            MPVLib.setOptionString("config", "yes")
+            MPVLib.setOptionString("config-dir", mpvDir.path)
+        } catch (e: Throwable) {
+            Log.w(TAG, "Failed to setup mpv config dir", e)
+        }
     }
 
     private fun formatMpvSeconds(seconds: Double): String {

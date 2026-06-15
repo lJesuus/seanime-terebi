@@ -2,14 +2,15 @@ import { ApiLoaders } from "@/api/components/api-loaders"
 import { useGetSettings } from "@/api/hooks/settings.hooks"
 import { useGetStatus } from "@/api/hooks/status.hooks"
 import { useServerAuthToken, useServerStatus, useServerUrl, useSetServerStatus, useSetServerUrl } from "@/atoms/server.atoms"
-import { Button } from "@/components/ui/button"
 import { Text } from "@/components/ui/text"
+import { cn } from "@/lib/utils"
 import { IMAGES } from "@/constants/images"
 import { useManualOfflineMode } from "@/lib/offline"
 import { isServerVersionSupported, MIN_SERVER_VERSION } from "@/lib/server-version"
 import { router, usePathname } from "expo-router"
 import React from "react"
-import { Alert, Image, View } from "react-native"
+import { Alert, Image, Platform, Pressable, View } from "react-native"
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated"
 
 export function ServerUrlWrapper({ children }: { children: React.ReactNode }) {
 
@@ -34,6 +35,54 @@ export function ServerUrlWrapper({ children }: { children: React.ReactNode }) {
         <>
             {children}
         </>
+    )
+}
+
+function TVFallbackButton({
+    onPress,
+    label,
+    hasTVPreferredFocus,
+}: {
+    onPress: () => void
+    label: string
+    hasTVPreferredFocus?: boolean
+}) {
+    const [isFocused, setIsFocused] = React.useState(false)
+    const scale = useSharedValue(1)
+
+    React.useEffect(() => {
+        scale.set(withTiming(isFocused ? 1.05 : 1, { duration: 150 }))
+    }, [isFocused, scale])
+
+    const animatedStyle = useAnimatedStyle(() => ({
+        transform: [{ scale: scale.value }],
+    }))
+
+    return (
+        <Pressable
+            onPress={onPress}
+            focusable={Platform.isTV}
+            hasTVPreferredFocus={Platform.isTV && hasTVPreferredFocus}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
+            className={cn(
+                "w-full max-w-xs items-center justify-center rounded-full py-3.5 px-6",
+                isFocused
+                    ? "bg-white border-2 border-brand-400/80"
+                    : "bg-white/10",
+            )}
+        >
+            <Animated.View style={animatedStyle}>
+                <Text
+                    className={cn(
+                        "text-sm font-semibold",
+                        isFocused ? "text-black" : "text-white/50",
+                    )}
+                >
+                    {label}
+                </Text>
+            </Animated.View>
+        </Pressable>
     )
 }
 
@@ -128,20 +177,15 @@ export function ServerDataWrapper({ children }: { children: React.ReactNode }) {
                                                                     URL.</Text>
             </View>
             <View className="gap-3 w-full items-center">
-                <Button
-                    variant="default"
-                    className="w-full max-w-xs z-[50] shadow shadow-foreground/5 rounded-full"
+                <TVFallbackButton
                     onPress={() => setManualOffline(true)}
-                >
-                    <Text>Switch to offline mode</Text>
-                </Button>
-                <Button
-                    variant="secondary"
-                    className="w-full max-w-xs z-[50] shadow shadow-foreground/5 rounded-full"
+                    label="Switch to offline mode"
+                    hasTVPreferredFocus
+                />
+                <TVFallbackButton
                     onPress={handleChangeUrlPress}
-                >
-                    <Text>Change URL</Text>
-                </Button>
+                    label="Change URL"
+                />
             </View>
         </View>
     }
@@ -149,13 +193,11 @@ export function ServerDataWrapper({ children }: { children: React.ReactNode }) {
     if (isLoading && !effectiveStatus) {
         return <View className="bg-background flex-1 justify-center items-center gap-4">
             <Image source={IMAGES.logo2} style={{ width: 128, height: 128 }} resizeMode="contain" />
-            <Button
-                variant="default"
-                className="z-[50] shadow shadow-foreground/5 rounded-full"
+            <TVFallbackButton
                 onPress={handleChangeUrlPress}
-            >
-                <Text>Change URL</Text>
-            </Button>
+                label="Change URL"
+                hasTVPreferredFocus
+            />
         </View>
     }
 
@@ -176,13 +218,10 @@ export function ServerDataWrapper({ children }: { children: React.ReactNode }) {
                     running {_serverStatus.version || "an unknown version"}.
                 </Text>
             </View>
-            <Button
-                variant="secondary"
-                className="rounded-full px-6"
+            <TVFallbackButton
                 onPress={handleChangeUrlPress}
-            >
-                <Text>Change URL</Text>
-            </Button>
+                label="Change URL"
+            />
         </View>
     }
 

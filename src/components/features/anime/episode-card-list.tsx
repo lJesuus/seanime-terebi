@@ -7,10 +7,8 @@ import React from "react"
 import { ActivityIndicator, Dimensions, FlatList, ListRenderItemInfo, Text, View } from "react-native"
 
 const { width } = Dimensions.get("screen")
-const CARD_WIDTH = (3.5 / 5) * width
+const DEFAULT_CARD_WIDTH = (3.5 / 5) * width
 const SPACING = 20
-const CARD_ROW_HEIGHT = Math.ceil(CARD_WIDTH * (9 / 16) + 60)
-const ITEM_FULL_WIDTH = CARD_WIDTH + SPACING
 const CONTENT_CONTAINER_STYLE = { paddingHorizontal: SPACING }
 const ITEM_SEPARATOR_STYLE = { width: SPACING }
 const INITIAL_EPISODE_CARD_RENDER = 3
@@ -27,6 +25,7 @@ type EpisodeCardListProps = {
     disabled?: boolean
     loadingEpisodeNumber?: number | null
     showAnimeTitle?: boolean
+    cardWidth?: number
 }
 
 function EpisodeLoadingBadge() {
@@ -54,8 +53,12 @@ export function EpisodeCardList(props: EpisodeCardListProps) {
         disabled,
         loadingEpisodeNumber,
         showAnimeTitle,
+        cardWidth: cardWidthProp,
     } = props
     const serverStatus = useServerStatus()
+    const resolvedCardWidth = cardWidthProp ?? DEFAULT_CARD_WIDTH
+    const resolvedCardRowHeight = Math.ceil(resolvedCardWidth * (9 / 16) + 60)
+    const resolvedItemFullWidth = resolvedCardWidth + SPACING
 
     const keyExtractor = React.useCallback((item: Anime_Episode, index: number) => {
         return item.localFile?.path || `${item.baseAnime?.id ?? "episode"}-${item.episodeNumber}-${index}`
@@ -75,7 +78,7 @@ export function EpisodeCardList(props: EpisodeCardListProps) {
 
         return (
             <EpisodeCard
-                cardWidth={CARD_WIDTH}
+                cardWidth={resolvedCardWidth}
                 image={image}
                 imageBlurred={spoiler.hideThumbnail || blurAdultContent}
                 title={spoiler.hideTitle ? `Episode ${item.episodeNumber}` : item.episodeTitle}
@@ -96,8 +99,8 @@ export function EpisodeCardList(props: EpisodeCardListProps) {
     }, [disabled, loadingEpisodeNumber, mediaId, onEpisodePress, serverStatus, spoilerActive, watchedProgress, watchHistory, showAnimeTitle])
 
     const getItemLayout = React.useCallback((_: ArrayLike<Anime_Episode> | null | undefined, index: number) => ({
-        length: ITEM_FULL_WIDTH,
-        offset: ITEM_FULL_WIDTH * index,
+        length: resolvedItemFullWidth,
+        offset: resolvedItemFullWidth * index,
         index,
     }), [])
 
@@ -106,7 +109,7 @@ export function EpisodeCardList(props: EpisodeCardListProps) {
             {!!title && <View className="p-4">
                 <Text className="text-2xl font-bold text-foreground">{title}</Text>
             </View>}
-            <View style={{ height: CARD_ROW_HEIGHT }}>
+            <View style={{ height: resolvedCardRowHeight }}>
                 <FlatList
                     data={episodes}
                     horizontal
@@ -120,7 +123,7 @@ export function EpisodeCardList(props: EpisodeCardListProps) {
                     maxToRenderPerBatch={INITIAL_EPISODE_CARD_RENDER}
                     windowSize={5}
                     removeClippedSubviews
-                    snapToInterval={ITEM_FULL_WIDTH}
+                    snapToInterval={resolvedItemFullWidth}
                     snapToAlignment="start"
                     decelerationRate="fast"
                     directionalLockEnabled

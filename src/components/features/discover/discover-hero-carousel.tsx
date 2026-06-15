@@ -3,10 +3,12 @@ import { useServerStatus } from "@/atoms/server.atoms"
 import { MediaEntryAudienceScore } from "@/components/features/media/media-entry-score"
 import { SeaImage } from "@/components/shared/sea-image"
 import { COLORS } from "@/constants/colors"
+import { useIsTV, useShowSidebar } from "@/hooks/use-device"
+import { cn } from "@/lib/utils"
 import { LinearGradient } from "expo-linear-gradient"
 import { router } from "expo-router"
 import React from "react"
-import { InteractionManager, NativeScrollEvent, NativeSyntheticEvent, Pressable, ScrollView, Text, useWindowDimensions, View } from "react-native"
+import { InteractionManager, NativeScrollEvent, NativeSyntheticEvent, Platform, Pressable, ScrollView, Text, useWindowDimensions, View } from "react-native"
 import Animated, {
     Extrapolation,
     interpolate,
@@ -20,7 +22,9 @@ import Animated, {
 } from "react-native-reanimated"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 
-export const HERO_HEIGHT = 320
+export const HERO_HEIGHT = Platform.isTV ? 540 : 320
+const HERO_TITLE_FONT_SIZE = Platform.isTV ? 44 : 26
+const HERO_GENRE_FONT_SIZE = Platform.isTV ? 16 : 10
 const AUTO_ROTATE_INTERVAL = 10000
 const MAX_ITEMS = 12
 const HERO_BACKGROUND = COLORS.background
@@ -57,6 +61,7 @@ export type DiscoverHeroCarouselController = {
     screenWidth: number
     scrollRef: React.RefObject<ScrollView | null>
     scrollX: SharedValue<number>
+    scrollToIndex: (index: number, animated?: boolean) => void
     handleDotPress: (index: number) => void
     handleScrollBeginDrag: () => void
     handleScrollEnd: (event: NativeSyntheticEvent<NativeScrollEvent>) => void
@@ -85,6 +90,8 @@ export function useDiscoverHeroItems(media: DiscoverHeroItem[]) {
 
 export function useDiscoverHeroCarouselController(media: DiscoverHeroItem[], isActive: boolean): DiscoverHeroCarouselController {
     const { width: screenWidth } = useWindowDimensions()
+    const showSidebar = useShowSidebar()
+    const carouselWidth = showSidebar ? screenWidth - 80 : screenWidth
     const [currentIndex, setCurrentIndex] = React.useState(0)
     const scrollRef = React.useRef<ScrollView | null>(null)
     const scrollX = useSharedValue(0)
@@ -96,13 +103,13 @@ export function useDiscoverHeroCarouselController(media: DiscoverHeroItem[], isA
             if (media.length === 0) return
 
             const safeIndex = Math.max(0, Math.min(index, media.length - 1))
-            scrollRef.current?.scrollTo({ x: safeIndex * screenWidth, animated })
+            scrollRef.current?.scrollTo({ x: safeIndex * carouselWidth, animated })
             if (!animated) {
-                scrollX.set(safeIndex * screenWidth)
+                scrollX.set(safeIndex * carouselWidth)
             }
             setCurrentIndex(safeIndex)
         },
-        [media.length, screenWidth, scrollX],
+        [media.length, carouselWidth, scrollX],
     )
 
     React.useEffect(() => {
@@ -148,20 +155,21 @@ export function useDiscoverHeroCarouselController(media: DiscoverHeroItem[], isA
             if (media.length === 0) return
 
             const offsetX = event.nativeEvent.contentOffset.x
-            const nextIndex = Math.round(offsetX / screenWidth)
+            const nextIndex = Math.round(offsetX / carouselWidth)
 
             scrollX.set(offsetX)
             setCurrentIndex(Math.max(0, Math.min(nextIndex, media.length - 1)))
             isInteracting.current = false
         },
-        [media.length, screenWidth, scrollX],
+        [media.length, carouselWidth, scrollX],
     )
 
     return {
         currentIndex,
-        screenWidth,
+        screenWidth: carouselWidth,
         scrollRef,
         scrollX,
+        scrollToIndex,
         handleDotPress,
         handleScrollBeginDrag,
         handleScrollEnd,
@@ -364,8 +372,92 @@ function DiscoverHeroBackdropImage({
     )
 }
 
+function DiscoverHeroDot({
+    index,
+    isActive,
+    isTV,
+    onFocus,
+    onPress,
+}: {
+    index: number
+    isActive: boolean
+    isTV: boolean
+    onFocus: () => void
+    onPress: () => void
+}) {
+    const [isFocused, setIsFocused] = React.useState(false)
+    const scale = useSharedValue(1)
+
+    React.useEffect(() => {
+        scale.set(withTiming(isFocused ? 1.3 : 1, { duration: 150 }))
+    }, [isFocused, scale])
+
+    const animatedStyle = useAnimatedStyle(() => ({
+        transform: [{ scale: scale.value }],
+    }))
+
+    return (
+        <Pressable
+            focusable={isTV}
+            hasTVPreferredFocus={isTV && index === 0}
+            onFocus={() => {
+                setIsFocused(true)
+                onFocus()
+            }}
+            onBlur={() => setIsFocused(false)}
+            onPress={onPress}
+            hitSlop={isTV ? 16 : 10}
+        >
+            <Animated.View
+                style={[
+                    {
+                        width: isActive ? (isTV ? 32 : 22) : (isTV ? 12 : 8),
+                        height: isTV ? 5 : 3,
+                        borderRadius: isTV ? 3 : 2,
+                        backgroundColor: isActive
+                            ? "rgba(255,255,255,0.9)"
+                            : isFocused
+                                ? "rgba(255,255,255,0.6)"
+                                : "rgba(255,255,255,0.28)",
+                    },
+                    isTV ? animatedStyle : undefined,
+                ]}
+            />
+        </Pressable>
+    )
+}
+
+function DiscoverHeroItem({
+    item,
+    type,
+    width,
+    height,
+}: {
+    item: DiscoverHeroItem
+    type: "anime" | "manga"
+    width: number
+    height: number
+    index: number
+}) {
+    return (
+        <View style={{ width, height }}>
+            <Pressable
+                style={{ flex: 1 }}
+                onPress={() => {
+                    if (type === "anime") {
+                        router.push(`/(app)/entry/anime/${item.id}`)
+                    } else {
+                        router.push(`/(app)/entry/manga/${item.id}`)
+                    }
+                }}
+            />
+        </View>
+    )
+}
+
 export function DiscoverHeroCarouselInteractionLayer({ media, type, controller }: DiscoverHeroCarouselInteractionLayerProps) {
     const serverStatus = useServerStatus()
+    const isTV = useIsTV()
     const handleHorizontalScroll = useAnimatedScrollHandler({
         onScroll: event => {
             controller.scrollX.value = event.contentOffset.x
@@ -395,17 +487,14 @@ export function DiscoverHeroCarouselInteractionLayer({ media, type, controller }
                 onScrollBeginDrag={controller.handleScrollBeginDrag}
                 onMomentumScrollEnd={controller.handleScrollEnd}
             >
-                {media.map((item) => (
-                    <Pressable
+                {media.map((item, index) => (
+                    <DiscoverHeroItem
                         key={item.id}
-                        style={{ width: controller.screenWidth, height: HERO_HEIGHT }}
-                        onPress={() => {
-                            if (type === "anime") {
-                                router.push(`/(app)/entry/anime/${item.id}`)
-                            } else {
-                                router.push(`/(app)/entry/manga/${item.id}`)
-                            }
-                        }}
+                        item={item}
+                        type={type}
+                        width={controller.screenWidth}
+                        height={HERO_HEIGHT}
+                        index={index}
                     />
                 ))}
             </Animated.ScrollView>
@@ -414,20 +503,20 @@ export function DiscoverHeroCarouselInteractionLayer({ media, type, controller }
                 pointerEvents="none"
                 style={{
                     position: "absolute",
-                    bottom: 44,
+                    bottom: isTV ? 60 : 44,
                     left: 0,
                     right: 0,
-                    paddingHorizontal: 20,
+                    paddingHorizontal: isTV ? 32 : 20,
                 }}
             >
                 <Text
                     numberOfLines={2}
                     style={{
                         color: "white",
-                        fontSize: 26,
+                        fontSize: HERO_TITLE_FONT_SIZE,
                         fontWeight: "800",
-                        lineHeight: 32,
-                        marginBottom: 10,
+                        lineHeight: isTV ? 44 : 32,
+                        marginBottom: isTV ? 14 : 10,
                         textShadowColor: "rgba(0,0,0,0.55)",
                         textShadowOffset: { width: 0, height: 1 },
                         textShadowRadius: 6,
@@ -436,7 +525,7 @@ export function DiscoverHeroCarouselInteractionLayer({ media, type, controller }
                     {title}
                 </Text>
 
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: isTV ? 10 : 6, flexWrap: "wrap" }}>
                     {!!score && !hideAudienceScore && (
                         <View style={{ marginLeft: 2, marginRight: 4 }}>
                             <MediaEntryAudienceScore score={score} />
@@ -445,12 +534,12 @@ export function DiscoverHeroCarouselInteractionLayer({ media, type, controller }
                     {genres.map((genre, idx) => (
                         <React.Fragment key={genre}>
                             {idx > 0 && (
-                                <Text style={{ color: "rgba(255,255,255,0.2)", fontSize: 10, fontWeight: "bold" }}> • </Text>
+                                <Text style={{ color: "rgba(255,255,255,0.2)", fontSize: HERO_GENRE_FONT_SIZE, fontWeight: "bold" }}> • </Text>
                             )}
                             <Text
                                 style={{
                                     color: "rgba(255,255,255,0.55)",
-                                    fontSize: 10,
+                                    fontSize: HERO_GENRE_FONT_SIZE,
                                     fontWeight: "600",
                                     textTransform: "uppercase",
                                     letterSpacing: 0.5,
@@ -468,27 +557,22 @@ export function DiscoverHeroCarouselInteractionLayer({ media, type, controller }
                 <View
                     style={{
                         position: "absolute",
-                        bottom: 16,
-                        left: 20,
+                        bottom: isTV ? 24 : 16,
+                        left: isTV ? 32 : 20,
                         flexDirection: "row",
                         alignItems: "center",
-                        gap: 5,
+                        gap: isTV ? 8 : 5,
                     }}
                 >
                     {media.map((_, idx) => (
-                        <Pressable key={idx} onPress={() => controller.handleDotPress(idx)} hitSlop={10}>
-                            <View
-                                style={{
-                                    width: idx === controller.currentIndex ? 22 : 8,
-                                    height: 3,
-                                    borderRadius: 2,
-                                    backgroundColor:
-                                        idx === controller.currentIndex
-                                            ? "rgba(255,255,255,0.9)"
-                                            : "rgba(255,255,255,0.28)",
-                                }}
-                            />
-                        </Pressable>
+                        <DiscoverHeroDot
+                            key={idx}
+                            index={idx}
+                            isActive={idx === controller.currentIndex}
+                            isTV={isTV}
+                            onFocus={() => controller.scrollToIndex(idx)}
+                            onPress={() => controller.handleDotPress(idx)}
+                        />
                     ))}
                 </View>
             )}

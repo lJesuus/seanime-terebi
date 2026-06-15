@@ -16,7 +16,7 @@ import { Ionicons } from "@/lib/icons/Ionicons"
 import { cn } from "@/lib/utils"
 import React from "react"
 import { Pressable, Text, View } from "react-native"
-import Animated, { useAnimatedStyle, useSharedValue, withSpring } from "react-native-reanimated"
+import Animated, { useAnimatedStyle, useSharedValue, withSpring, withTiming } from "react-native-reanimated"
 import { MediaEntryScore } from "./media-entry-score"
 
 function audienceScoreColor(score: number): string {
@@ -223,17 +223,21 @@ export function MediaEntryCard<T extends "anime" | "manga">(props: MediaEntryCar
     const libraryData = (syncedLibraryEntryData?.libraryData ?? _libraryData) as Anime_EntryLibraryData | undefined
     const nakamaLibraryData = (syncedLibraryEntryData?.nakamaLibraryData ?? _nakamaLibraryData) as Anime_NakamaEntryLibraryData | undefined
 
+    const [isFocused, setIsFocused] = React.useState(false)
+
     const scale = useSharedValue(1)
     const animatedStyle = useAnimatedStyle(() => ({
         transform: [{ scale: scale.value }],
     }))
 
     function onPressIn() {
-        scale.set(withSpring(0.95, { damping: 50, stiffness: 400 }))
+        if (!isFocused) {
+            scale.set(withSpring(0.95, { damping: 50, stiffness: 400 }))
+        }
     }
 
     function onPressOut() {
-        scale.set(withSpring(1, { damping: 50, stiffness: 400 }))
+        scale.set(withSpring(isFocused ? 1.08 : 1, { damping: 50, stiffness: 400 }))
     }
 
     function onPress() {
@@ -241,8 +245,18 @@ export function MediaEntryCard<T extends "anime" | "manga">(props: MediaEntryCar
     }
 
     function onLongPress() {
-        scale.set(withSpring(1, { damping: 50, stiffness: 400 }))
+        scale.set(withSpring(isFocused ? 1.08 : 1, { damping: 50, stiffness: 400 }))
         setSheetOpen(true)
+    }
+
+    function onFocus() {
+        setIsFocused(true)
+        scale.set(withTiming(1.08, { duration: 200 }))
+    }
+
+    function onBlur() {
+        setIsFocused(false)
+        scale.set(withTiming(1, { duration: 200 }))
     }
 
     const showAudienceScore = serverStatus?.settings?.anilist?.hideAudienceScore ? false : _showAudienceScore
@@ -253,7 +267,16 @@ export function MediaEntryCard<T extends "anime" | "manga">(props: MediaEntryCar
 
     return (
         <>
-            <Pressable onPress={onPress} onPressIn={onPressIn} onPressOut={onPressOut} onLongPress={onLongPress} delayLongPress={350}>
+            <Pressable
+                onPress={onPress}
+                onPressIn={onPressIn}
+                onPressOut={onPressOut}
+                onLongPress={onLongPress}
+                delayLongPress={350}
+                focusable={true}
+                onFocus={onFocus}
+                onBlur={onBlur}
+            >
                 <Animated.View
                     className="flex flex-col relative mb-2"
                     style={[
@@ -266,7 +289,10 @@ export function MediaEntryCard<T extends "anime" | "manga">(props: MediaEntryCar
                 >
                     {overlay}
                     <View
-                        className="relative mb-2 w-full overflow-hidden rounded-xl"
+                        className={cn(
+                            "relative mb-2 w-full overflow-hidden rounded-xl border-2",
+                            isFocused ? "border-brand-400/80 shadow-2xl" : "border-transparent"
+                        )}
                         style={{ height: posterHeight }}
                     >
                         <SeaImage
@@ -318,6 +344,7 @@ export function MediaEntryCard<T extends "anime" | "manga">(props: MediaEntryCar
                         className={cn(
                             "text-lg text-foreground font-semibold mb-1",
                             { "text-sm": cardWidth < 150 },
+                            isFocused && "text-brand-300"
                         )}
                     >
                         {media.title?.userPreferred}

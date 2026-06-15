@@ -63,7 +63,9 @@ type ButtonProps = React.ComponentPropsWithoutRef<typeof Pressable> &
     VariantProps<typeof buttonVariants>;
 
 const Button = React.forwardRef<React.ElementRef<typeof Pressable>, ButtonProps>(
-    ({ className, variant, size, ...props }, ref) => {
+    ({ className, variant, size, onFocus, onBlur, ...props }, ref) => {
+        const [isFocused, setIsFocused] = React.useState(false)
+
         return (
             <TextClassContext.Provider
                 value={cn(
@@ -75,9 +77,19 @@ const Button = React.forwardRef<React.ElementRef<typeof Pressable>, ButtonProps>
                     className={cn(
                         props.disabled && "opacity-50 web:pointer-events-none",
                         buttonVariants({ variant, size, className }),
+                        isFocused && "border border-brand-400 bg-brand-500/10 scale-102 shadow-lg"
                     )}
                     ref={ref}
                     role="button"
+                    focusable={true}
+                    onFocus={(e) => {
+                        setIsFocused(true)
+                        onFocus?.(e)
+                    }}
+                    onBlur={(e) => {
+                        setIsFocused(false)
+                        onBlur?.(e)
+                    }}
                     {...props}
                 />
             </TextClassContext.Provider>

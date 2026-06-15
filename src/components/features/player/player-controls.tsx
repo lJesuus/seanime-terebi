@@ -1,5 +1,6 @@
 import type { PlayerChapter, PlayerState as PlayerStateType } from "@/lib/player"
 import type { MobilePlaybackSource } from "@/lib/player/types"
+import { useIsTV } from "@/hooks/use-device"
 import { cn } from "@/lib/utils"
 import { ChevronLeft, List, Pause, Play, Settings, SkipForward, Unlock } from "lucide-react-native"
 import React from "react"
@@ -24,14 +25,24 @@ export function PlayerIconButton({ icon, onPress, active, disabled }: {
     active?: boolean
     disabled?: boolean
 }) {
+    const isTV = useIsTV()
+    const [isFocused, setIsFocused] = React.useState(false)
+
     return (
-        <Pressable onPress={disabled ? undefined : onPress} hitSlop={8}>
+        <Pressable
+            focusable={isTV}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
+            onPress={disabled ? undefined : onPress}
+            hitSlop={8}
+        >
             {({ pressed }) => (
                 <View
                     className={cn(
                         "h-9 w-9 items-center justify-center rounded-full",
                         disabled ? "opacity-30" : "opacity-100",
                         active ? "bg-white/15" : pressed ? "bg-white/10" : "bg-white/5",
+                        isFocused && isTV && !disabled ? "border border-brand-400/60" : "",
                     )}
                 >
                     {icon}
@@ -108,6 +119,34 @@ interface ControlsOverlayProps {
     buttonSeekSec: number
 }
 
+function TvFocusableBtn({
+    onPress,
+    children,
+    className,
+    disabled,
+}: {
+    onPress?: () => void
+    children: React.ReactNode
+    className?: string
+    disabled?: boolean
+}) {
+    const isTV = useIsTV()
+    const [isFocused, setIsFocused] = React.useState(false)
+
+    return (
+        <Pressable
+            focusable={isTV}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
+            onPress={disabled ? undefined : onPress}
+            hitSlop={12}
+            className={cn(className, isFocused && isTV ? "rounded-lg bg-white/10" : "")}
+        >
+            {children}
+        </Pressable>
+    )
+}
+
 function isSkippableChapter(title?: string) {
     if (!title) return false
     const normalized = title.trim().toLowerCase()
@@ -181,9 +220,9 @@ export function ControlsOverlay(props: ControlsOverlayProps) {
 
             <View pointerEvents="box-none" className="absolute left-0 right-0 top-0">
                 <View className="flex-row items-center pb-2" style={{ paddingTop: insets.top + 4, paddingLeft: topPadL, paddingRight: topPadR }}>
-                    <Pressable onPress={onBack} hitSlop={12} className="p-2">
+                    <TvFocusableBtn onPress={onBack} className="p-2">
                         <ChevronLeft size={28} color="#fff" />
-                    </Pressable>
+                    </TvFocusableBtn>
 
                     <View className="min-w-0 flex-1 shrink pl-3">
                         <Text className="text-base font-bold text-white" numberOfLines={1}>
@@ -322,20 +361,18 @@ export function ControlsOverlay(props: ControlsOverlayProps) {
 
                 <View className="flex-row items-center justify-between gap-3" style={{ paddingLeft: padL, paddingRight: padR }}>
                     <View className="flex-row items-center gap-3">
-                        <Pressable
+                        <TvFocusableBtn
                             onPress={() => {
                                 onTogglePlayPause()
                                 scheduleHide()
-                            }} hitSlop={12}
+                            }}
                         >
-                            {({ pressed }) => (
-                                <View className={cn("h-10 w-10 items-center justify-center rounded-full", pressed ? "bg-white/15" : "bg-white/10")}>
-                                    {state.paused
-                                        ? <Play size={24} color="#fff" fill="#fff" />
-                                        : <Pause size={24} color="#fff" fill="#fff" />}
-                                </View>
-                            )}
-                        </Pressable>
+                            <View className={cn("h-10 w-10 items-center justify-center rounded-full bg-white/10")}>
+                                {state.paused
+                                    ? <Play size={24} color="#fff" fill="#fff" />
+                                    : <Pause size={24} color="#fff" fill="#fff" />}
+                            </View>
+                        </TvFocusableBtn>
 
                         {/* <Pressable
                          onPress={() => {
@@ -369,19 +406,16 @@ export function ControlsOverlay(props: ControlsOverlayProps) {
                         </Text>
                     </View>
 
-                    <Pressable onPress={onManualNextEpisode} disabled={!canPlayNext} hitSlop={12}>
-                        {({ pressed }) => (
-                            <View
-                                className={cn(
-                                    "h-10 w-10 items-center justify-center rounded-full",
-                                    canPlayNext ? "opacity-100" : "opacity-40",
-                                    !canPlayNext ? "bg-white/5" : pressed ? "bg-white/15" : "bg-white/10",
-                                )}
-                            >
-                                <SkipForward size={16} color="#fff" />
-                            </View>
-                        )}
-                    </Pressable>
+                    <TvFocusableBtn onPress={onManualNextEpisode} disabled={!canPlayNext}>
+                        <View
+                            className={cn(
+                                "h-10 w-10 items-center justify-center rounded-full",
+                                canPlayNext ? "opacity-100" : "opacity-40 bg-white/5",
+                            )}
+                        >
+                            <SkipForward size={16} color="#fff" />
+                        </View>
+                    </TvFocusableBtn>
                 </View>
             </View>
         </Animated.View>
@@ -396,6 +430,9 @@ export function LockModeOverlay({
     insets: { bottom: number }
     onUnlock: () => void
 }) {
+    const isTV = useIsTV()
+    const [isFocused, setIsFocused] = React.useState(false)
+
     return (
         <Animated.View
             entering={FadeIn.duration(150)}
@@ -403,16 +440,21 @@ export function LockModeOverlay({
             className="absolute left-0 right-0 items-center"
             style={{ bottom: insets.bottom + 16 }}
         >
-            <Pressable onPress={onUnlock}>
-                {({ pressed }) => (
-                    <View
-                        className={cn("flex-row items-center gap-1.5 rounded-full border border-white/15 px-4 py-2.5",
-                            pressed ? "bg-white/15" : "bg-black/75")}
-                    >
-                        <Unlock size={15} color="#fff" />
-                        <Text className="text-sm font-medium text-white">Unlock</Text>
-                    </View>
-                )}
+            <Pressable
+                focusable={isTV}
+                onFocus={() => setIsFocused(true)}
+                onBlur={() => setIsFocused(false)}
+                onPress={onUnlock}
+            >
+                <View
+                    className={cn(
+                        "flex-row items-center gap-1.5 rounded-full border px-4 py-2.5",
+                        isFocused && isTV ? "border-brand-400/60 bg-white/15" : "border-white/15 bg-black/75",
+                    )}
+                >
+                    <Unlock size={15} color="#fff" />
+                    <Text className="text-sm font-medium text-white">Unlock</Text>
+                </View>
             </Pressable>
         </Animated.View>
     )
