@@ -1,3 +1,4 @@
+import { useIsTV } from "@/hooks/use-device"
 import { cn } from "@/lib/utils"
 import { Ionicons } from "@expo/vector-icons"
 import * as React from "react"

@@ -2,7 +2,7 @@ import { useIsTV } from "@/hooks/use-device"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import React from "react"
-import { Pressable, Text, useWindowDimensions, View } from "react-native"
+import { Platform, Pressable, Text, useWindowDimensions, View } from "react-native"
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated"
 
 interface AutoNextCardProps {
@@ -30,6 +30,7 @@ export function AutoNextCard({
     padR, insets, onCancel, onPlayNow,
 }: AutoNextCardProps) {
     const { width: screenWidth } = useWindowDimensions()
+    const isTV = useIsTV()
     const cardWidth = Math.min(340, Math.max(260, screenWidth * 0.38))
 
     return (
@@ -57,13 +58,13 @@ export function AutoNextCard({
                 </View>
 
                 <View className="w-full flex-row gap-2">
-                    <Button variant="outline" className="min-w-0 flex-1" onPress={onCancel}>
+                    <Button variant="outline" className="min-w-0 flex-1" focusable={isTV} onPress={onCancel}>
                         <Text className="text-sm font-semibold text-foreground" numberOfLines={1}>
                             Cancel
                         </Text>
                     </Button>
 
-                    <Button className="min-w-0 flex-1" onPress={onPlayNow}>
+                    <Button className="min-w-0 flex-1" focusable={isTV} onPress={onPlayNow}>
                         <Text className="text-sm font-bold" numberOfLines={1}>
                             Play now
                         </Text>
@@ -82,6 +83,8 @@ export function NextEpisodeConfirmCard({
     onCancel,
     onConfirm,
 }: NextEpisodeConfirmCardProps) {
+    const isTV = useIsTV()
+
     return (
         <Animated.View
             entering={FadeIn.duration(160)}
@@ -107,11 +110,11 @@ export function NextEpisodeConfirmCard({
                 </View>
 
                 <View className="flex-row gap-3">
-                    <Button variant="outline" className="flex-1" onPress={onCancel}>
+                    <Button variant="outline" className="flex-1" focusable={isTV} onPress={onCancel}>
                         <Text className="text-sm font-semibold text-foreground">Cancel</Text>
                     </Button>
 
-                    <Button className="flex-1" onPress={onConfirm}>
+                    <Button className="flex-1" focusable={isTV} onPress={onConfirm}>
                         <Text className="text-sm font-bold">Play now</Text>
                     </Button>
                 </View>

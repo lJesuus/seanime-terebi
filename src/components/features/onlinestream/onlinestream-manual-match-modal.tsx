@@ -5,6 +5,7 @@ import {
     useOnlinestreamManualSearch,
     useRemoveOnlinestreamMapping,
 } from "@/api/hooks/onlinestream.hooks"
+import { useIsTV } from "@/hooks/use-device"
 import { SheetFooter, SheetFooterButton } from "@/components/shared/sheet-footer"
 import { SeaBottomSheet } from "@/components/ui/bottom-sheet"
 import { cn } from "@/lib/utils"
@@ -30,6 +31,7 @@ export function OnlinestreamManualMatchModal({
     dubbed,
     mediaTitle,
 }: OnlinestreamManualMatchModalProps) {
+    const isTV = useIsTV()
     const [query, setQuery] = React.useState(mediaTitle)
 
     const { data: currentMapping } = useGetOnlinestreamMapping({ provider, mediaId })
@@ -113,6 +115,7 @@ export function OnlinestreamManualMatchModal({
                     <Pressable
                         onPress={handleSearch}
                         disabled={isSearching || !query.trim()}
+                        focusable={isTV}
                         className={cn(
                             "h-11 px-4 items-center justify-center rounded-xl",
                             isSearching || !query.trim()
@@ -148,6 +151,7 @@ export function OnlinestreamManualMatchModal({
                         key={`${result.id}-${index}`}
                         onPress={() => handleSelectResult(result)}
                         disabled={isMapping}
+                        focusable={isTV}
                         className={cn(
                             "px-4 py-3.5 bg-card/30 border-x border-border/50 active:bg-white/10",
                             index === 0 && "rounded-t-2xl border-t",

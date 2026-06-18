@@ -1,3 +1,4 @@
+import { useIsTV } from "@/hooks/use-device"
 import { useServerStatus } from "@/atoms/server.atoms"
 import { InlineSelect } from "@/components/shared/inline-select"
 import { LabeledSwitch } from "@/components/shared/labeled-switch"
@@ -21,6 +22,7 @@ import {
 import { cn } from "@/lib/utils"
 import Ionicons from "@expo/vector-icons/Ionicons"
 import * as React from "react"
+import { TvFocusablePressable } from "@/components/ui/tv-focusable"
 import { Pressable, ScrollView, View } from "react-native"
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -48,6 +50,7 @@ export function SearchFilterSheet({
         if (open) setDraft(params)
     }, [open, params])
 
+    const isTV = useIsTV()
     const isAnime = draft.type === "anime"
     const sortingOptions = isAnime ? SEARCH_SORTING_ANIME : SEARCH_SORTING_MANGA
 
@@ -163,6 +166,7 @@ export function SearchFilterSheet({
                                             ...d,
                                             year: d.year === year ? null : year,
                                         }))}
+                                        focusable={isTV}
                                         className={cn(
                                             "h-9 w-16 rounded-xl border items-center justify-center active:opacity-70",
                                             selected
@@ -224,14 +228,15 @@ type FilterButtonProps = {
 export function FilterButton({ activeCount, onPress }: FilterButtonProps) {
     const hasFilters = activeCount > 0
     return (
-        <Pressable
+        <TvFocusablePressable
             onPress={onPress}
             className={cn(
-                "h-11 flex-row items-center gap-1.5 rounded-2xl border px-3 active:opacity-70",
+                "h-11 flex-row items-center gap-1.5 rounded-2xl border px-3",
                 hasFilters
                     ? "border-brand-500/60 bg-brand-500/15"
                     : "border-white/10 bg-white/[0.04]",
             )}
+            focusedClassName="border-brand-400 bg-brand-500/30"
         >
             <Ionicons
                 name="options-outline"
@@ -246,6 +251,6 @@ export function FilterButton({ activeCount, onPress }: FilterButtonProps) {
             >
                 {hasFilters ? `Filter (${activeCount})` : "Filter"}
             </Text>
-        </Pressable>
+        </TvFocusablePressable>
     )
 }

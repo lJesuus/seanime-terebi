@@ -3,6 +3,7 @@ import { SeaImage } from "@/components/shared/sea-image"
 import { COLORS } from "@/constants/colors"
 import { ContinueWatchingItem } from "@/hooks/use-anime-library-collection"
 import { useShowSidebar } from "@/hooks/use-device"
+import { TVFocusContext } from "@/contexts/tv-focus-context"
 import { cn } from "@/lib/utils"
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { LinearGradient } from "expo-linear-gradient"
@@ -74,6 +75,7 @@ export function LibraryHeroCarousel({
     const { height: screenHeight, width: screenWidth } = useWindowDimensions()
     const showSidebar = useShowSidebar()
     const carouselWidth = showSidebar ? screenWidth - 80 : screenWidth
+    const { sidebarTag } = React.useContext(TVFocusContext)
 
     const isTV = Platform.isTV
     const heroHeight = isTV ? Math.round(screenHeight * 0.60) : (screenHeight < 750 ? 260 : 310)
@@ -227,6 +229,13 @@ export function LibraryHeroCarousel({
     const handleCarouselFocus = React.useCallback(() => setHasCarouselFocus(true), [])
     const handleCarouselBlur = React.useCallback(() => setHasCarouselFocus(false), [])
 
+    const handleSlideFocus = React.useCallback((index: number) => {
+        setCurrentIndex(index)
+        setTimeout(() => {
+            scrollRef.current?.scrollTo({ x: index * carouselWidth, animated: true })
+        }, 0)
+    }, [carouselWidth])
+
     if (items.length === 0) return null
 
     return (
@@ -249,6 +258,7 @@ export function LibraryHeroCarousel({
                 scrollEnabled={items.length > 1}
                 showsHorizontalScrollIndicator={false}
                 scrollEventThrottle={16}
+                focusable={false}
                 onScroll={handleHorizontalScroll}
                 onScrollBeginDrag={handleHorizontalScroll}
                 onScrollEndDrag={handleHorizontalScroll}
@@ -267,6 +277,8 @@ export function LibraryHeroCarousel({
                         heroHeight={heroHeight}
                         titleFontSize={titleFontSize}
                         currentIndex={currentIndex}
+                        sidebarTag={sidebarTag}
+                        onSlideFocus={handleSlideFocus}
                         onCarouselFocus={handleCarouselFocus}
                         onCarouselBlur={handleCarouselBlur}
                         hasCarouselFocus={hasCarouselFocus}
@@ -318,6 +330,8 @@ function LibraryHeroSlide({
     heroHeight,
     titleFontSize,
     currentIndex,
+    sidebarTag,
+    onSlideFocus,
     onCarouselFocus,
     onCarouselBlur,
     hasCarouselFocus,
@@ -331,6 +345,8 @@ function LibraryHeroSlide({
     heroHeight: number
     titleFontSize: number
     currentIndex: number
+    sidebarTag: number | null
+    onSlideFocus?: (index: number) => void
     onCarouselFocus: () => void
     onCarouselBlur: () => void
     hasCarouselFocus: boolean
@@ -420,9 +436,13 @@ function LibraryHeroSlide({
                     <Pressable
                         focusable={isTV}
                         hasTVPreferredFocus={isTV && index === 0}
+                        {...(isTV && index === 0 && sidebarTag ? { nextFocusLeft: sidebarTag } : {})}
                         onFocus={() => {
                             setBtnFocused(true)
                             onCarouselFocus()
+                            if (isTV && index !== currentIndex) {
+                                onSlideFocus?.(index)
+                            }
                         }}
                         onBlur={() => {
                             setBtnFocused(false)

@@ -1,3 +1,4 @@
+import { useIsTV } from "@/hooks/use-device"
 import * as React from "react"
 import { LayoutChangeEvent, Pressable, Text, View } from "react-native"
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated"
@@ -14,6 +15,7 @@ type SegmentedControlProps<T extends string = string> = {
 }
 
 export function SegmentedControl<T extends string = string>({ options, value, onChange }: SegmentedControlProps<T>) {
+    const isTV = useIsTV()
     const [width, setWidth] = React.useState(0)
     const activeIndex = options.findIndex(opt => opt.value === value)
 
@@ -65,6 +67,7 @@ export function SegmentedControl<T extends string = string>({ options, value, on
                     <Pressable
                         key={option.value}
                         onPress={() => onChange(option.value)}
+                        focusable={isTV}
                         className="flex-1 items-center justify-center h-full rounded-full z-10"
                     >
                         <Text

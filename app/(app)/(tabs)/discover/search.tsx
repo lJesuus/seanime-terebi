@@ -1,27 +1,17 @@
-import { AL_BaseAnime, AL_BaseManga } from "@/api/generated/types"
 import { useInfiniteAnimeSearch, useInfiniteMangaSearch } from "@/api/hooks/search.hooks"
-import { FilterButton, SearchFilterSheet } from "@/components/features/discover/search-filter-sheet"
-import { MediaEntryCard } from "@/components/features/media/media-entry-card"
+import { HorizontalMediaCardList } from "@/components/features/media/horizontal-media-card-list"
 import { SafeView } from "@/components/layout/layout-view"
 import { LibrarySearchBar } from "@/components/shared/library-search-bar"
+import { TvFocusablePressable } from "@/components/ui/tv-focusable"
 import { useIOSScrollRefreshRateWorkaround } from "@/hooks/use-ios-scroll-refresh-rate-workaround"
-import { DEFAULT_SEARCH_PARAMS, getActiveFiltersCount, isSearchActive, SearchParams, searchParamsAtom } from "@/lib/search/search-atoms"
+import { isSearchActive, searchParamsAtom } from "@/lib/search/search-atoms"
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { router, useLocalSearchParams } from "expo-router"
 import { useAtom } from "jotai"
 import * as React from "react"
-import { ActivityIndicator, Dimensions, FlatList, Pressable, Text, View } from "react-native"
+import { ActivityIndicator, ScrollView, Text, View } from "react-native"
 import Animated, { FadeIn } from "react-native-reanimated"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
-import { DiscoverModeToggle } from "."
-
-const { width: SCREEN_WIDTH } = Dimensions.get("screen")
-const NUM_COLUMNS = 3
-const H_PADDING = 14
-const GAP = 10
-const CARD_WIDTH = (SCREEN_WIDTH - (NUM_COLUMNS - 1) * GAP - 2 * H_PADDING) / NUM_COLUMNS
-const SEARCH_INITIAL_ROWS = 4
-const SEARCH_ROW_HEIGHT = CARD_WIDTH * 1.5 + GAP + 8
 
 function EmptyState({ query }: { query: string }) {
     return (
@@ -31,24 +21,11 @@ function EmptyState({ query }: { query: string }) {
         >
             <Ionicons name="search-outline" size={40} color="rgba(255,255,255,0.12)" />
             <Text className="text-center text-sm text-white/30">
-                {query.trim() ? `No results for "${query}"` : "Use the search bar or filters above"}
+                {query.trim() ? `No results for "${query}"` : "Use the search bar above"}
             </Text>
         </Animated.View>
     )
 }
-
-function FooterLoader({ isLoading }: { isLoading: boolean }) {
-    if (!isLoading) return null
-    return (
-        <View className="py-6 items-center">
-            <ActivityIndicator size="small" color="rgba(255,255,255,0.3)" />
-        </View>
-    )
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// Search screen
-///////////////////////////////////////////////////////////////////////////////
 
 export default function SearchScreen() {
     const insets = useSafeAreaInsets()
@@ -57,15 +34,12 @@ export default function SearchScreen() {
     useIOSScrollRefreshRateWorkaround()
 
     const [params, setParams] = useAtom(searchParamsAtom)
-    const [filterOpen, setFilterOpen] = React.useState(false)
 
     React.useEffect(() => {
         if (initialType === "anime" || initialType === "manga") {
             setParams(p => ({ ...p, type: initialType }))
         }
     }, [initialType])
-
-    const activeFilters = getActiveFiltersCount(params)
 
     const [titleInput, setTitleInput] = React.useState(params.title ?? "")
     const debounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -78,142 +52,120 @@ export default function SearchScreen() {
         }, 350)
     }
 
-    // Keep title input in sync if params reset from outside
     React.useEffect(() => {
         if (params.title === null && titleInput !== "") {
             setTitleInput("")
         }
     }, [params.title])
 
-    function handleTypeChange(t: "anime" | "manga") {
-        setParams(p => ({
-            ...DEFAULT_SEARCH_PARAMS,
-            type: t,
-            title: p.title,
-        }))
-        setTitleInput(params.title ?? "")
-    }
-
-    function handleApplyFilters(newParams: SearchParams) {
-        setParams(newParams)
-    }
-
     const shouldQuery = isSearchActive(params)
-    const animeQuery = useInfiniteAnimeSearch(params, params.type === "anime" && shouldQuery)
-    const mangaQuery = useInfiniteMangaSearch(params, params.type === "manga" && shouldQuery)
 
-    const activeQuery = params.type === "anime" ? animeQuery : mangaQuery
+    const animeParams = React.useMemo(() => ({ ...params, type: "anime" as const }), [params])
+    const mangaParams = React.useMemo(() => ({ ...params, type: "manga" as const }), [params])
 
-    const items = React.useMemo(() => {
-        return activeQuery.data?.pages
+    const animeQuery = useInfiniteAnimeSearch(animeParams, shouldQuery)
+    const mangaQuery = useInfiniteMangaSearch(mangaParams, shouldQuery)
+
+    const animeItems = React.useMemo(() => {
+        return animeQuery.data?.pages
             .filter(Boolean)
             .flatMap(page => page?.Page?.media)
             .filter(Boolean) ?? []
-    }, [activeQuery.data])
+    }, [animeQuery.data])
 
-    function handleLoadMore() {
-        if (activeQuery.hasNextPage && !activeQuery.isFetchingNextPage) {
-            activeQuery.fetchNextPage()
+    const mangaItems = React.useMemo(() => {
+        return mangaQuery.data?.pages
+            .filter(Boolean)
+            .flatMap(page => page?.Page?.media)
+            .filter(Boolean) ?? []
+    }, [mangaQuery.data])
+
+    const handleAnimeLoadMore = React.useCallback(() => {
+        if (animeQuery.hasNextPage && !animeQuery.isFetchingNextPage) {
+            animeQuery.fetchNextPage()
         }
-    }
+    }, [animeQuery])
 
-    function handlePress(item: AL_BaseAnime | AL_BaseManga) {
-        router.push(`/(app)/entry/${params.type}/${item.id}`)
-    }
-
-    const keyExtractor = React.useCallback((item: AL_BaseAnime | AL_BaseManga, index: number) => `${item.id}-${index}`, [])
-
-    const getItemLayout = React.useCallback((_: ArrayLike<AL_BaseAnime | AL_BaseManga> | null | undefined, index: number) => {
-        const rowIndex = Math.floor(index / NUM_COLUMNS)
-
-        return {
-            length: SEARCH_ROW_HEIGHT,
-            offset: 12 + (rowIndex * SEARCH_ROW_HEIGHT),
-            index,
+    const handleMangaLoadMore = React.useCallback(() => {
+        if (mangaQuery.hasNextPage && !mangaQuery.isFetchingNextPage) {
+            mangaQuery.fetchNextPage()
         }
+    }, [mangaQuery])
+
+    const lastFocusedSection = React.useRef(0)
+    const handleAnimeFocus = React.useCallback(() => {
+        lastFocusedSection.current = 0
+    }, [])
+    const handleMangaFocus = React.useCallback(() => {
+        lastFocusedSection.current = 1
     }, [])
 
-    const renderSearchItem = React.useCallback(({ item }: { item: AL_BaseAnime | AL_BaseManga }) => (
-        <MediaEntryCard
-            type={params.type}
-            cardWidth={CARD_WIDTH}
-            media={item as any}
-            onPress={() => handlePress(item)}
-            showAudienceScore
-        />
-    ), [params.type])
-
-    const isLoading = activeQuery.isLoading
-    const isFetchingMore = activeQuery.isFetchingNextPage
+    const hasAnimeResults = animeItems.length > 0
+    const hasMangaResults = mangaItems.length > 0
+    const isInitialLoading = shouldQuery && (animeQuery.isLoading || mangaQuery.isLoading) && !hasAnimeResults && !hasMangaResults
+    const showEmptyState = shouldQuery && !animeQuery.isLoading && !mangaQuery.isLoading && !hasAnimeResults && !hasMangaResults
 
     return (
         <SafeView className="flex-1 bg-background">
-            <View
-                className="gap-2.5 border-b border-white/5 bg-background px-3.5 py-2"
-            >
+            <View className="gap-2.5 border-b border-white/5 bg-background px-3.5 py-2">
                 <View className="flex-row items-center gap-2">
-                    <Pressable
+                    <TvFocusablePressable
                         onPress={() => router.back()}
-                        className="w-10 h-10 rounded-full items-center justify-center bg-white/[0.06] active:opacity-60"
+                        className="w-10 h-10 rounded-full items-center justify-center bg-white/[0.06]"
+                        focusedClassName="border-2 border-brand-400/80 bg-white/10"
                     >
                         <Ionicons name="arrow-back" size={20} color="rgba(255,255,255,0.8)" />
-                    </Pressable>
+                    </TvFocusablePressable>
                     <View className="flex-1">
                         <LibrarySearchBar
                             value={titleInput}
                             onChangeText={handleTitleChange}
-                            placeholder={params.type === "anime" ? "Search anime\u2026" : "Search manga\u2026"}
+                            placeholder="Search anime & manga\u2026"
                         />
                     </View>
                 </View>
-
-                <View className="flex-row items-center justify-between">
-                    <DiscoverModeToggle mode={params.type} onChangeMode={handleTypeChange} />
-                    <FilterButton
-                        activeCount={activeFilters}
-                        onPress={() => setFilterOpen(true)}
-                    />
-                </View>
             </View>
 
-            {isLoading ? (
+            {isInitialLoading ? (
                 <View className="flex-1 items-center justify-center">
                     <ActivityIndicator size="large" color="rgba(255,255,255,0.3)" />
                 </View>
+            ) : showEmptyState ? (
+                <EmptyState query={titleInput} />
             ) : (
-                <FlatList
-                    data={items as (AL_BaseAnime | AL_BaseManga)[]}
-                    numColumns={NUM_COLUMNS}
-                    keyExtractor={keyExtractor}
+                <ScrollView
+                    contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}
                     showsVerticalScrollIndicator={false}
-                    onEndReached={handleLoadMore}
-                    onEndReachedThreshold={0.4}
-                    getItemLayout={getItemLayout}
-                    initialNumToRender={NUM_COLUMNS * SEARCH_INITIAL_ROWS}
-                    maxToRenderPerBatch={NUM_COLUMNS * 2}
-                    updateCellsBatchingPeriod={16}
-                    windowSize={7}
-                    removeClippedSubviews
-                    contentContainerStyle={{
-                        paddingHorizontal: H_PADDING,
-                        paddingTop: 12,
-                        paddingBottom: insets.bottom + 80,
-                        gap: GAP,
-                        flexGrow: 1,
-                    }}
-                    columnWrapperStyle={{ gap: GAP }}
-                    ListEmptyComponent={<EmptyState query={titleInput} />}
-                    ListFooterComponent={<FooterLoader isLoading={isFetchingMore} />}
-                    renderItem={renderSearchItem}
-                />
+                >
+                    <HorizontalMediaCardList
+                        title="Anime"
+                        type="anime"
+                        media={animeItems}
+                        onEndReached={handleAnimeLoadMore}
+                        showAudienceScore
+                        onCardFocus={handleAnimeFocus}
+                        sectionIndex={0}
+                        compact
+                        hideCount
+                    />
+                    <HorizontalMediaCardList
+                        title="Manga"
+                        type="manga"
+                        media={mangaItems}
+                        onEndReached={handleMangaLoadMore}
+                        showAudienceScore
+                        onCardFocus={handleMangaFocus}
+                        sectionIndex={1}
+                        compact
+                        hideCount
+                    />
+                    {(animeQuery.isFetchingNextPage || mangaQuery.isFetchingNextPage) && (
+                        <View className="py-2 items-center">
+                            <ActivityIndicator size="small" color="rgba(255,255,255,0.3)" />
+                        </View>
+                    )}
+                </ScrollView>
             )}
-
-            <SearchFilterSheet
-                open={filterOpen}
-                onOpenChange={setFilterOpen}
-                params={params}
-                onApply={handleApplyFilters}
-            />
         </SafeView>
     )
 }

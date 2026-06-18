@@ -1,11 +1,11 @@
+import { TvFocusablePressable } from "@/components/ui/tv-focusable"
 import { useIsTV } from "@/hooks/use-device"
 import { cn } from "@/lib/utils"
 import { getPlatformExternalPlayers } from "@/lib/player/external-players"
 import { getPlayerPreferences, setPlayerPreferences } from "@/lib/player/player-preferences"
 import { Ionicons } from "@expo/vector-icons"
 import * as React from "react"
-import { findNodeHandle, Pressable, ScrollView, Text, View } from "react-native"
-import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated"
+import { findNodeHandle, ScrollView, Text, View } from "react-native"
 
 // ─── Data types ───────────────────────────────────────────────────
 
@@ -20,7 +20,7 @@ export type TVSectionItem = {
     isToggle?: boolean
     toggleValue?: boolean
     onToggle?: (value: boolean) => void
-    renderRightPanel?: (ctx: {}) => React.ReactNode
+    renderRightPanel?: (ctx: { leftColumnNode?: number | null }) => React.ReactNode
 }
 
 export type TVSection = {
@@ -44,6 +44,7 @@ function TVContentItem({
     hideChevron,
     hasTVPreferredFocus,
     nextFocusRight,
+    nextFocusLeft,
 }: {
     icon: React.ComponentProps<typeof Ionicons>["name"]
     label: string
@@ -55,32 +56,25 @@ function TVContentItem({
     hideChevron?: boolean
     hasTVPreferredFocus?: boolean
     nextFocusRight?: number | null
+    nextFocusLeft?: number | null
 }) {
-    const scale = useSharedValue(1)
-
-    React.useEffect(() => {
-        scale.set(withTiming(isFocused ? 1.03 : 1, { duration: 150 }))
-    }, [isFocused, scale])
-
-    const animatedStyle = useAnimatedStyle(() => ({
-        transform: [{ scale: scale.value }],
-    }))
-
     return (
-        <Pressable
+        <TvFocusablePressable
+            scaleTo={1.03}
             className={cn(
                 "flex-row items-center px-4 py-3.5 mx-2 rounded-xl",
                 isFocused
                     ? "border border-brand-400/60 bg-white/[0.04]"
                     : "border border-transparent",
             )}
+            focusedClassName="border-brand-400/60 bg-white/[0.04]"
             onFocus={onFocus}
             onPress={onPress}
-            focusable={true}
             hasTVPreferredFocus={hasTVPreferredFocus}
-            {...({ nextFocusRight } as any)}
+            nextFocusRight={nextFocusRight ?? undefined}
+            nextFocusLeft={nextFocusLeft ?? undefined}
         >
-            <Animated.View className="flex-row items-center flex-1" style={animatedStyle}>
+            <View className="flex-row items-center flex-1">
                 <Ionicons
                     name={icon}
                     size={20}
@@ -105,8 +99,8 @@ function TVContentItem({
                 {!hideChevron && (
                     <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.25)" />
                 )}
-            </Animated.View>
-        </Pressable>
+            </View>
+        </TvFocusablePressable>
     )
 }
 
@@ -124,7 +118,11 @@ function TVSectionHeader({ title }: { title: string }) {
 
 // ─── Player picker for right panel ────────────────────────────────
 
-export function TVPlayerOptions() {
+export function TVPlayerOptions({
+    nextFocusLeft,
+}: {
+    nextFocusLeft?: number | null
+}) {
     const presets = React.useMemo(() => getPlatformExternalPlayers(), [])
     const [selected, setSelected] = React.useState<string | null>(null)
 
@@ -169,6 +167,7 @@ export function TVPlayerOptions() {
                     detail={opt.detail}
                     isSelected={selected === opt.id}
                     onPress={() => handleSelect(opt.id)}
+                    nextFocusLeft={nextFocusLeft}
                 />
             ))}
         </View>
@@ -180,35 +179,23 @@ function TVPlayerOptionRow({
     detail,
     isSelected,
     onPress,
+    nextFocusLeft,
 }: {
     label: string
     detail?: string
     isSelected: boolean
     onPress: () => void
+    nextFocusLeft?: number | null
 }) {
-    const [isFocused, setIsFocused] = React.useState(false)
-    const scale = useSharedValue(1)
-
-    React.useEffect(() => {
-        scale.set(withTiming(isFocused ? 1.02 : 1, { duration: 150 }))
-    }, [isFocused, scale])
-
-    const animatedStyle = useAnimatedStyle(() => ({
-        transform: [{ scale: scale.value }],
-    }))
-
     return (
-        <Pressable
-            className={cn(
-                "flex-row items-center px-3 py-2.5 rounded-xl mb-1",
-                isFocused && "border border-brand-400/60 bg-white/[0.04]",
-            )}
+        <TvFocusablePressable
+            scaleTo={1.02}
+            className="flex-row items-center px-3 py-2.5 rounded-xl mb-1"
+            focusedClassName="border border-brand-400/60 bg-white/[0.04]"
             onPress={onPress}
-            focusable={true}
-            onFocus={() => setIsFocused(true)}
-            onBlur={() => setIsFocused(false)}
+            nextFocusLeft={nextFocusLeft ?? undefined}
         >
-            <Animated.View className="flex-row items-center flex-1" style={animatedStyle}>
+            <View className="flex-row items-center flex-1">
                 <View
                     className={cn(
                         "w-5 h-5 rounded-full border-2 items-center justify-center mr-3",
@@ -233,8 +220,8 @@ function TVPlayerOptionRow({
                 {isSelected && (
                     <Ionicons name="checkmark-circle" size={18} color="rgb(74, 222, 128)" />
                 )}
-            </Animated.View>
-        </Pressable>
+            </View>
+        </TvFocusablePressable>
     )
 }
 
@@ -243,53 +230,37 @@ function TVPlayerOptionRow({
 function TVToggle({
     value,
     onToggle,
+    nextFocusLeft,
 }: {
     value: boolean
     onToggle?: (val: boolean) => void
+    nextFocusLeft?: number | null
 }) {
-    const [isFocused, setIsFocused] = React.useState(false)
-    const scale = useSharedValue(1)
-
-    React.useEffect(() => {
-        scale.set(withTiming(isFocused ? 1.03 : 1, { duration: 150 }))
-    }, [isFocused, scale])
-
-    const animatedStyle = useAnimatedStyle(() => ({
-        transform: [{ scale: scale.value }],
-    }))
-
     return (
         <View className="mt-6">
-            <Pressable
+            <TvFocusablePressable
                 className="flex-row items-center gap-3"
+                focusedClassName=""
                 onPress={() => onToggle?.(!value)}
-                focusable={true}
-                onFocus={() => setIsFocused(true)}
-                onBlur={() => setIsFocused(false)}
+                nextFocusLeft={nextFocusLeft ?? undefined}
             >
-                <Animated.View
+                <View
                     className={cn(
                         "w-14 h-8 rounded-full items-center justify-center",
-                        isFocused
-                            ? "bg-white border-2 border-brand-400/80"
-                            : value
-                                ? "bg-brand-500"
-                                : "bg-white/20",
+                        value ? "bg-brand-500" : "bg-white/20",
                     )}
-                    style={animatedStyle}
                 >
                     <View
                         className={cn(
-                            "w-6 h-6 rounded-full absolute",
-                            isFocused ? "bg-black" : "bg-white",
+                            "w-6 h-6 rounded-full absolute bg-white",
                             value ? "right-1" : "left-1",
                         )}
                     />
-                </Animated.View>
-                <Text className={cn("text-sm", isFocused ? "text-black font-semibold" : value ? "text-white" : "text-white/60")}>
+                </View>
+                <Text className={cn("text-sm", value ? "text-white" : "text-white/60")}>
                     {value ? "Enabled" : "Disabled"}
                 </Text>
-            </Pressable>
+            </TvFocusablePressable>
         </View>
     )
 }
@@ -302,49 +273,35 @@ export function TVActionPanel({
     onAction,
     isProcessing,
     statusLabel,
+    nextFocusLeft,
 }: {
     description: string
     actionLabel: string
     onAction: () => void
     isProcessing?: boolean
     statusLabel?: string
+    nextFocusLeft?: number | null
 }) {
-    const [isFocused, setIsFocused] = React.useState(false)
-    const scale = useSharedValue(1)
-
-    React.useEffect(() => {
-        scale.set(withTiming(isFocused ? 1.03 : 1, { duration: 150 }))
-    }, [isFocused, scale])
-
-    const animatedStyle = useAnimatedStyle(() => ({
-        transform: [{ scale: scale.value }],
-    }))
-
     return (
         <View className="mt-2">
             <Text className="text-sm text-white/60 leading-5 mb-6">
                 {description}
             </Text>
 
-            <Pressable
+            <TvFocusablePressable
                 className={cn(
-                    "flex-row items-center justify-center px-6 py-3.5 rounded-xl",
-                    isFocused
-                        ? "border border-brand-400/60 bg-brand-500/20"
-                        : "border border-brand-400/30 bg-brand-500/10",
+                    "flex-row items-center justify-center px-6 py-3.5 rounded-xl border border-brand-400/30 bg-brand-500/10",
                     isProcessing && "opacity-50",
                 )}
+                focusedClassName="border-brand-400/60 bg-brand-500/20"
                 onPress={isProcessing ? undefined : onAction}
                 focusable={!isProcessing}
-                onFocus={() => setIsFocused(true)}
-                onBlur={() => setIsFocused(false)}
+                nextFocusLeft={nextFocusLeft ?? undefined}
             >
-                <Animated.View style={animatedStyle}>
-                    <Text className="text-sm font-semibold text-white text-center">
-                        {isProcessing ? (statusLabel || "Processing...") : actionLabel}
-                    </Text>
-                </Animated.View>
-            </Pressable>
+                <Text className="text-sm font-semibold text-white text-center">
+                    {isProcessing ? (statusLabel || "Processing...") : actionLabel}
+                </Text>
+            </TvFocusablePressable>
         </View>
     )
 }
@@ -390,12 +347,20 @@ export function ProfileTVLayout({
     // Refs for cross-panel focus navigation
     const rightPanelRef = React.useRef<View | null>(null)
     const [rightPanelNode, setRightPanelNode] = React.useState<number | null>(null)
+    const leftColumnRef = React.useRef<View>(null)
+    const [leftColumnNode, setLeftColumnNode] = React.useState<number | null>(null)
 
     React.useEffect(() => {
         if (rightPanelRef.current) {
             setRightPanelNode(findNodeHandle(rightPanelRef.current))
         }
     }, [activeItemId])
+
+    React.useEffect(() => {
+        if (leftColumnRef.current) {
+            setLeftColumnNode(findNodeHandle(leftColumnRef.current))
+        }
+    }, [])
 
     const activeItemSection = visibleSections.find(s =>
         s.items.some(i => i.id === activeItemId),
@@ -405,12 +370,33 @@ export function ProfileTVLayout({
     // First item across all sections (for hasTVPreferredFocus)
     const globalFirstItemId = visibleSections[0]?.items[0]?.id
 
+    // Scroll to focused item
+    const scrollRef = React.useRef<ScrollView>(null)
+
+    const handleItemFocus = React.useCallback((itemId: string, itemIndex: number) => {
+        setActiveItemId(itemId)
+        // Estimate Y position: user header ~72px + sum of preceding section headers and items
+        if (scrollRef.current) {
+            let y = 72
+            for (const section of visibleSections) {
+                y += 38 // section header
+                for (const item of section.items) {
+                    if (item.id === itemId) {
+                        scrollRef.current?.scrollTo({ y: Math.max(0, y - 80), animated: false })
+                        return
+                    }
+                    y += 52 // item height
+                }
+            }
+        }
+    }, [visibleSections])
+
     if (!isTV) return null
 
     return (
         <View className="flex-1 flex-row">
             {/* ── Left: MenuProfiles ── */}
-            <View className="flex-1 pt-2">
+            <View ref={leftColumnRef} className="w-1/3 pt-2">
                 {/* Compact user info */}
                 <View className="flex-row items-center gap-3 px-5 pb-3 border-b border-border/30 mb-1">
                     <View className="w-9 h-9 rounded-full bg-white/10 items-center justify-center">
@@ -427,32 +413,37 @@ export function ProfileTVLayout({
                     </View>
                 </View>
 
-                <ScrollView showsVerticalScrollIndicator={false}>
+                <ScrollView ref={scrollRef} showsVerticalScrollIndicator={false}>
                     {visibleSections.map((section) => (
                         <View key={section.id}>
                             <TVSectionHeader title={section.title} />
-                            {section.items.map((item, itemIdx) => (
-                                <TVContentItem
-                                    key={item.id}
-                                    icon={item.icon}
-                                    label={item.label}
-                                    detail={item.detail}
-                                    accessory={item.accessory}
-                                    isFocused={item.id === activeItemId}
-                                    onFocus={() => setActiveItemId(item.id)}
-                                    onPress={item.onPress}
-                                    hideChevron={item.hideChevron}
-                                    hasTVPreferredFocus={item.id === globalFirstItemId}
-                                    nextFocusRight={rightPanelNode}
-                                />
-                            ))}
+                            {section.items.map((item, itemIdx) => {
+                                const globalIdx = visibleSections
+                                    .slice(0, visibleSections.indexOf(section))
+                                    .reduce((sum, s) => sum + s.items.length, 0) + itemIdx
+                                return (
+                                    <TVContentItem
+                                        key={item.id}
+                                        icon={item.icon}
+                                        label={item.label}
+                                        detail={item.detail}
+                                        accessory={item.accessory}
+                                        isFocused={item.id === activeItemId}
+                                        onFocus={() => handleItemFocus(item.id, globalIdx)}
+                                        onPress={item.onPress}
+                                        hideChevron={item.hideChevron}
+                                        hasTVPreferredFocus={item.id === globalFirstItemId}
+                                        nextFocusRight={rightPanelNode}
+                                    />
+                                )
+                            })}
                         </View>
                     ))}
                 </ScrollView>
             </View>
 
             {/* ── Right: Opciones ── */}
-            <View ref={rightPanelRef} className="w-[300px] border-l border-border/50 pt-2">
+            <View ref={rightPanelRef} className="w-2/3 border-l border-border/50 pt-2">
                 {activeItem ? (
                     <ScrollView showsVerticalScrollIndicator={false}>
                         {activeItem.renderRightPanel ? (
@@ -474,23 +465,27 @@ export function ProfileTVLayout({
                                         </Text>
                                     </View>
                                 </View>
-                                {activeItem.renderRightPanel({})}
+                                {activeItem.renderRightPanel({ leftColumnNode })}
                             </View>
                         ) : (
                             <View className="px-5 pt-6">
-                                <View className="w-14 h-14 rounded-2xl bg-brand-500/10 items-center justify-center mb-4">
-                                    <Ionicons
-                                        name={activeItem.icon}
-                                        size={28}
-                                        color="rgba(255,255,255,0.8)"
-                                    />
+                                <View className="flex-row items-center gap-3 mb-5">
+                                    <View className="w-10 h-10 rounded-xl bg-brand-500/10 items-center justify-center">
+                                        <Ionicons
+                                            name={activeItem.icon}
+                                            size={22}
+                                            color="rgba(255,255,255,0.8)"
+                                        />
+                                    </View>
+                                    <View className="flex-1">
+                                        <Text className="text-base font-bold text-white">
+                                            {activeItem.label}
+                                        </Text>
+                                        <Text className="text-xs text-white/30">
+                                            {activeItemSection?.title}
+                                        </Text>
+                                    </View>
                                 </View>
-                                <Text className="text-xl font-bold text-white mb-1">
-                                    {activeItem.label}
-                                </Text>
-                                <Text className="text-xs text-white/30 mb-4">
-                                    {activeItemSection?.title}
-                                </Text>
                                 {activeItem.detail ? (
                                     <Text className="text-sm text-white/80 leading-5">
                                         {activeItem.detail}
@@ -501,6 +496,7 @@ export function ProfileTVLayout({
                                     <TVToggle
                                         value={activeItem.toggleValue ?? false}
                                         onToggle={activeItem.onToggle}
+                                        nextFocusLeft={leftColumnNode}
                                     />
                                 ) : null}
 

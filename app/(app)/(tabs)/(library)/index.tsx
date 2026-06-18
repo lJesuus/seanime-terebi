@@ -4,17 +4,15 @@ import { ContinueWatching } from "@/components/features/anime/continue-watching"
 import { DownloadedAnimeList } from "@/components/features/anime/downloaded-anime-list"
 import { HorizontalMediaCardList } from "@/components/features/media/horizontal-media-card-list"
 import { LibraryHeroCarousel } from "@/components/features/media/library-hero-carousel"
-import { MediaEntryGrid } from "@/components/features/media/media-entry-grid"
 import { TabFadeView } from "@/components/layout/tab-fade-view"
 import { CenteredSpinner } from "@/components/shared/centered-spinner"
-import { LIBRARY_SEARCH_HEADER_BASE_HEIGHT, LibrarySearchHeader } from "@/components/shared/library-search-header"
 import { LuffyError } from "@/components/shared/luffy-error"
 import { OfflineBanner } from "@/components/shared/offline-banner"
 import { ContinueWatchingItem, useAnimeLibraryCollection } from "@/hooks/use-anime-library-collection"
 import { useIOSScrollRefreshRateWorkaround } from "@/hooks/use-ios-scroll-refresh-rate-workaround"
 import { useIsTV } from "@/hooks/use-device"
 import { useIsServerConnected } from "@/lib/offline"
-import { filterEntriesByTitle } from "@/lib/utils/filtering"
+
 import { useIsFocused } from "@react-navigation/native"
 import { router, useFocusEffect } from "expo-router"
 import { useSetAtom } from "jotai"
@@ -35,8 +33,6 @@ export default function LibraryScreen() {
     const isTV = useIsTV()
     const isFocused = useIsFocused()
     const insets = useSafeAreaInsets()
-    const [searchQuery, setSearchQuery] = React.useState("")
-    const deferredSearchQuery = React.useDeferredValue(searchQuery)
     const [isPullRefreshing, setIsPullRefreshing] = React.useState(false)
 
     const scrollY = useSharedValue(0)
@@ -62,20 +58,6 @@ export default function LibraryScreen() {
         refetchRef.current = refetch
     }, [refetch])
 
-    const allEntries = React.useMemo(
-        () => libraryCollectionList.flatMap(list => list?.entries ?? []),
-        [libraryCollectionList],
-    )
-
-    const searchResults = React.useMemo(() => {
-        if (!deferredSearchQuery.trim()) return []
-        return filterEntriesByTitle(allEntries, deferredSearchQuery)
-            .map(e => e.media!)
-            .filter(Boolean)
-    }, [allEntries, deferredSearchQuery])
-
-    const isSearching = searchQuery.trim().length > 0
-
     const shelfSections = React.useMemo<LibraryShelfSection[]>(() => {
         const buildMedia = (type: string) => (
             libraryCollectionList.find(item => item.type === type)?.entries?.map(entry => entry.media!).filter(Boolean) ?? []
@@ -97,8 +79,7 @@ export default function LibraryScreen() {
         }, [isConnected]),
     )
 
-    const hasHero = isConnected && continueWatchingList.length > 0 && !isSearching
-    const searchHeaderHeight = isConnected ? LIBRARY_SEARCH_HEADER_BASE_HEIGHT : 0
+    const hasHero = isConnected && continueWatchingList.length > 0
 
     const handleRefresh = React.useCallback(() => {
         setIsPullRefreshing(true)
@@ -168,79 +149,52 @@ export default function LibraryScreen() {
         >
             <OfflineBanner />
 
-            <TabFadeView noSidebarOffset>
+            <TabFadeView>
                 <View className="flex-1">
-                    {isConnected && isTV && (
-                        <LibrarySearchHeader
-                            value={searchQuery}
-                            onChangeText={setSearchQuery}
-                            placeholder="Search anime..."
-                        />
-                    )}
-                    {isSearching ? (
-                        <MediaEntryGrid
-                            type="anime"
-                            media={searchResults}
-                            query={searchQuery}
-                            onPress={(media) => router.push(`/(app)/entry/anime/${media.id}`)}
-                            topPadding={isTV ? 0 : searchHeaderHeight}
-                        />
-                    ) : (
-                        <Animated.FlatList
-                            focusable={false}
-                            key={isConnected ? "online" : "offline"}
-                            data={isConnected ? shelfSections : []}
-                            renderItem={renderShelfSection}
-                            keyExtractor={(item) => item.key}
-                            ListHeaderComponent={
-                                <View className="flex flex-col gap-4">
-                                    {hasHero && (
-                                        <LibraryHeroCarousel
-                                            type="anime"
-                                            animeItems={continueWatchingList}
-                                            isFocused={isFocused}
-                                            scrollY={scrollY}
-                                            onWatchPress={handleWatchPress}
-                                        />
-                                    )}
-                                    {isConnected && continueWatchingList.length > 0 && (
-                                        <ContinueWatching items={continueWatchingList} />
-                                    )}
-                                </View>
-                            }
-                            ListFooterComponent={<DownloadedAnimeList />}
-                            ListEmptyComponent={isConnected && continueWatchingList.length === 0 ? (
-                                <LuffyError
-                                    title="Your anime library is empty"
-                                    description="Add anime to your collection or use the Discover tab to find something to watch."
-                                />
-                            ) : null}
-                            contentInsetAdjustmentBehavior="never"
-                            contentContainerStyle={{
-                                paddingTop: isTV ? 0 : (hasHero ? 0 : searchHeaderHeight),
-                                paddingBottom: 80,
-                            }}
-                            showsVerticalScrollIndicator={false}
-                            refreshControl={refreshControl}
-                            initialNumToRender={2}
-                            maxToRenderPerBatch={2}
-                            updateCellsBatchingPeriod={16}
-                            windowSize={5}
-                            removeClippedSubviews={!isTV}
-                            onScroll={scrollHandler}
-                            scrollEventThrottle={16}
-                        />
-                    )}
-
-                    {isConnected && !isTV && (
-                        <LibrarySearchHeader
-                            value={searchQuery}
-                            onChangeText={setSearchQuery}
-                            placeholder="Search anime..."
-                            scrollY={scrollY}
-                            hasHero={hasHero}
-                        />
-                    )}
+                    <Animated.FlatList
+                        focusable={false}
+                        key={isConnected ? "online" : "offline"}
+                        data={isConnected ? shelfSections : []}
+                        renderItem={renderShelfSection}
+                        keyExtractor={(item) => item.key}
+                        ListHeaderComponent={
+                            <View className="flex flex-col gap-4">
+                                {hasHero && (
+                                    <LibraryHeroCarousel
+                                        type="anime"
+                                        animeItems={continueWatchingList}
+                                        isFocused={isFocused}
+                                        scrollY={scrollY}
+                                        onWatchPress={handleWatchPress}
+                                    />
+                                )}
+                                {isConnected && continueWatchingList.length > 0 && (
+                                    <ContinueWatching items={continueWatchingList} />
+                                )}
+                            </View>
+                        }
+                        ListFooterComponent={<DownloadedAnimeList />}
+                        ListEmptyComponent={isConnected && continueWatchingList.length === 0 ? (
+                            <LuffyError
+                                title="Your anime library is empty"
+                                description="Add anime to your collection or use the Discover tab to find something to watch."
+                            />
+                        ) : null}
+                        contentInsetAdjustmentBehavior="never"
+                        contentContainerStyle={{
+                            paddingTop: isTV ? 0 : (hasHero ? 0 : insets.top),
+                            paddingBottom: 80,
+                        }}
+                        showsVerticalScrollIndicator={false}
+                        refreshControl={refreshControl}
+                        initialNumToRender={2}
+                        maxToRenderPerBatch={2}
+                        updateCellsBatchingPeriod={16}
+                        windowSize={5}
+                        removeClippedSubviews={!isTV}
+                        onScroll={scrollHandler}
+                        scrollEventThrottle={16}
+                    />
                 </View>
             </TabFadeView>
         </View>

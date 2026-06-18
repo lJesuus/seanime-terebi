@@ -2,7 +2,9 @@ import { useDebridCancelStream } from "@/api/hooks/debrid.hooks"
 import { useTorrentstreamStopStream } from "@/api/hooks/torrentstream.hooks"
 import { ProfileSubpageHeader } from "@/components/features/profile/profile-menu"
 import { Surface } from "@/components/shared/surface"
+import { TvFocusablePressable } from "@/components/ui/tv-focusable"
 import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 import { useServerConnectionState } from "@/lib/offline"
 import {
     activeStreamSessionAtom,
@@ -18,7 +20,7 @@ import {
 import { Ionicons } from "@expo/vector-icons"
 import { useAtom, useAtomValue } from "jotai"
 import * as React from "react"
-import { Alert, ScrollView, Text, View } from "react-native"
+import { ScrollView, Text, View } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 
 export default function ActiveStreamScreen() {
@@ -56,31 +58,20 @@ export default function ActiveStreamScreen() {
     const handleStopStream = React.useCallback(() => {
         if (!activeStream || isStopping || !isConnected) return
 
-        const stop = () => {
-            if (activeStream.streamMode === "debrid") {
-                cancelDebridStream.mutate({
-                    options: {
-                        removeTorrent: false,
-                    },
-                }, {
-                    onSuccess: clearLocalStreamState,
-                })
-                return
-            }
-
-            stopTorrentStream.mutate(undefined, {
+        if (activeStream.streamMode === "debrid") {
+            cancelDebridStream.mutate({
+                options: {
+                    removeTorrent: false,
+                },
+            }, {
                 onSuccess: clearLocalStreamState,
             })
+            return
         }
 
-        Alert.alert(
-            "Stop active stream?",
-            "This stops the server-side stream session.",
-            [
-                { text: "Cancel", style: "cancel" },
-                { text: "Stop", style: "destructive", onPress: stop },
-            ],
-        )
+        stopTorrentStream.mutate(undefined, {
+            onSuccess: clearLocalStreamState,
+        })
     }, [activeStream, cancelDebridStream, clearLocalStreamState, isConnected, isStopping, stopTorrentStream])
 
     const statusLabel = activeStream ? getStatusLabel(activeStream.status) : "No stream"
@@ -207,4 +198,118 @@ function formatStartedAt(value: number): string {
         hour: "2-digit",
         minute: "2-digit",
     })
+}
+
+// ── TV Panel ──────────────────────────────────────────────────────
+
+export function ActiveStreamPanel({
+    nextFocusLeft,
+}: {
+    nextFocusLeft?: number | null
+}) {
+    const connectionState = useServerConnectionState()
+    const [activeStream, setActiveStream] = useAtom(activeStreamSessionAtom)
+    const [torrentStatus, setTorrentStatus] = useAtom(torrentStreamStatusAtom)
+    const debridState = useAtomValue(debridStreamStateAtom)
+    const [, setPendingInfo] = useAtom(torrentStreamPendingInfoAtom)
+    const [, setStreamSessionMode] = useAtom(streamSessionModeAtom)
+    const [, setIsPreparing] = useAtom(torrentStreamIsPreparingAtom)
+    const [, setTorrentLoadingState] = useAtom(torrentStreamLoadingStateAtom)
+    const [, setTorrentLoadingTorrentName] = useAtom(torrentStreamLoadingTorrentNameAtom)
+    const [, setTorrentIsLoaded] = useAtom(torrentStreamIsLoadedAtom)
+    const [, setDebridStreamState] = useAtom(debridStreamStateAtom)
+    const stopTorrentStream = useTorrentstreamStopStream()
+    const cancelDebridStream = useDebridCancelStream()
+    const isConnected = connectionState === "connected"
+    const isStopping = stopTorrentStream.isPending || cancelDebridStream.isPending
+
+    const clearLocalStreamState = React.useCallback(() => {
+        setActiveStream(null)
+        setPendingInfo(null)
+        setStreamSessionMode(null)
+        setIsPreparing(false)
+        setTorrentLoadingState(null)
+        setTorrentLoadingTorrentName(null)
+        setTorrentStatus(null)
+        setTorrentIsLoaded(false)
+        setDebridStreamState(null)
+    }, [setActiveStream, setDebridStreamState, setIsPreparing, setPendingInfo, setStreamSessionMode, setTorrentIsLoaded, setTorrentLoadingState,
+        setTorrentLoadingTorrentName, setTorrentStatus])
+
+    const handleStopStream = React.useCallback(() => {
+        if (!activeStream || isStopping || !isConnected) return
+
+        if (activeStream.streamMode === "debrid") {
+            cancelDebridStream.mutate({
+                options: { removeTorrent: false },
+            }, { onSuccess: clearLocalStreamState })
+            return
+        }
+
+        stopTorrentStream.mutate(undefined, { onSuccess: clearLocalStreamState })
+    }, [activeStream, cancelDebridStream, clearLocalStreamState, isConnected, isStopping, stopTorrentStream])
+
+    const statusLabel = activeStream ? getStatusLabel(activeStream.status) : "No stream"
+    const statusDetail = React.useMemo(() => {
+        if (!activeStream) return null
+        if (activeStream.streamMode === "debrid") {
+            return debridState?.message || activeStream.message || null
+        }
+        if (!torrentStatus) return activeStream.message || null
+        const parts = [`${torrentStatus.progressPercentage.toFixed(1)}% ready`, `${torrentStatus.seeders} seeders`]
+        if (torrentStatus.downloadSpeed) parts.push(torrentStatus.downloadSpeed)
+        return parts.join(" · ")
+    }, [activeStream, debridState?.message, torrentStatus])
+
+    return (
+        <ScrollView className="flex-1 px-4 pt-2">
+            {activeStream ? (
+                <View className="bg-white/5 rounded-xl p-4">
+                    <Text className="text-lg font-bold text-white" numberOfLines={2}>
+                        {activeStream.title}
+                    </Text>
+                    <Text className="text-sm text-white/55 mt-1" numberOfLines={2}>
+                        {activeStream.subtitle}
+                    </Text>
+
+                    <View className="mt-5 gap-3">
+                        <InfoRow label="Status" value={statusDetail || statusLabel} />
+                        {!!activeStream.torrentName && activeStream.torrentName !== "-" ? (
+                            <InfoRow label="Release" value={activeStream.torrentName} />
+                        ) : null}
+                    </View>
+
+                    {!isConnected ? (
+                        <View className="mt-5 rounded-2xl border border-amber-400/20 bg-amber-400/10 p-3">
+                            <Text className="text-sm text-amber-100/80">
+                                Reconnect to the server to stop this stream.
+                            </Text>
+                        </View>
+                    ) : null}
+
+                    <TvFocusablePressable
+                        className={cn("flex-row items-center justify-center px-6 py-3.5 rounded-xl mt-5 bg-red-500/20 border border-red-400/30", isStopping || !isConnected ? "opacity-50" : "")}
+                        focusedClassName="bg-red-500/30 border-red-400/60"
+                        onPress={isStopping || !isConnected ? undefined : handleStopStream}
+                        focusable={!isStopping && isConnected}
+                        nextFocusLeft={nextFocusLeft ?? undefined}
+                    >
+                        <Ionicons name="stop-circle" size={17} color="white" />
+                        <Text className="text-sm font-semibold text-white ml-2">
+                            {isStopping ? "Stopping..." : "Stop Stream"}
+                        </Text>
+                    </TvFocusablePressable>
+                </View>
+            ) : (
+                <View className="items-center p-8 bg-white/5 rounded-xl">
+                    <View className="h-14 w-14 items-center justify-center rounded-2xl bg-white/5">
+                        <Ionicons name="checkmark-circle-outline" size={30} color="rgba(255,255,255,0.45)" />
+                    </View>
+                    <Text className="mt-4 text-base font-semibold text-white">
+                        No active stream
+                    </Text>
+                </View>
+            )}
+        </ScrollView>
+    )
 }

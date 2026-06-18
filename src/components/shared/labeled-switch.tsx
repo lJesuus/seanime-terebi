@@ -1,3 +1,4 @@
+import { useIsTV } from "@/hooks/use-device"
 import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
 import * as React from "react"
@@ -11,15 +12,13 @@ type LabeledSwitchProps = {
     helper?: string
 }
 
-/**
- * Reusable full-width row with a label on the left and a Switch on the right.
- * The entire row is tappable to toggle the switch.
- */
 export function LabeledSwitch({ label, checked, onToggle, disabled, helper }: LabeledSwitchProps) {
+    const isTV = useIsTV()
     return (
         <Pressable
             onPress={onToggle}
             disabled={disabled}
+            focusable={isTV}
             className="flex-row items-center justify-between gap-3"
         >
             <View className="flex-1 gap-0.5">

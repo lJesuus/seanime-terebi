@@ -41,7 +41,7 @@ export function SidebarShell({
     const isProgrammaticRef = React.useRef(false)
     const prevMenuOpenRef = React.useRef(menuOpen)
 
-    const { setSidebarTag } = React.useContext(TVFocusContext)
+    const { setSidebarTag, contentWrapperTag } = React.useContext(TVFocusContext)
     const sidebarZoneRef = React.useRef<FocusableViewHandle>(null)
 
     React.useLayoutEffect(() => {
@@ -102,19 +102,29 @@ export function SidebarShell({
         transform: [{ translateX: interpolate(labelOpacity.value, [0, 1], [-10, 0]) }],
     }))
 
-    if (pressableRefs.current.length !== tabs.length) {
-        pressableRefs.current = tabs.map((_, i) => pressableRefs.current[i] ?? React.createRef<React.ElementRef<typeof Pressable>>()) as (React.RefObject<React.ElementRef<typeof Pressable>> | null)[]
+    const itemCount = tabs.length + 1
+    if (pressableRefs.current.length !== itemCount) {
+        pressableRefs.current = Array.from({ length: itemCount }, (_, i) =>
+            pressableRefs.current[i] ?? React.createRef<React.ElementRef<typeof Pressable>>()
+        ) as (React.RefObject<React.ElementRef<typeof Pressable>> | null)[]
     }
 
     const [focusChain, setFocusChain] = React.useState<{ down: (number | null)[]; up: (number | null)[] } | null>(null)
     React.useLayoutEffect(() => {
+        const itemCount = tabs.length + 1
         const down: (number | null)[] = []
         const up: (number | null)[] = []
-        for (let i = 0; i < tabs.length; i++) {
-            const nextRef = i < tabs.length - 1 ? pressableRefs.current[i + 1] : null
-            const prevRef = i > 0 ? pressableRefs.current[i - 1] : null
-            down.push(nextRef?.current ? (findNodeHandle(nextRef.current) as number) : null)
-            up.push(prevRef?.current ? (findNodeHandle(prevRef.current) as number) : null)
+        for (let i = 0; i < itemCount; i++) {
+            if (i < tabs.length) {
+                const nextRef = i < tabs.length - 1 ? pressableRefs.current[i + 1] : pressableRefs.current[tabs.length]
+                const prevRef = i > 0 ? pressableRefs.current[i - 1] : null
+                down.push(nextRef?.current ? (findNodeHandle(nextRef.current) as number) : null)
+                up.push(prevRef?.current ? (findNodeHandle(prevRef.current) as number) : null)
+            } else {
+                down.push(null)
+                const prevRef = pressableRefs.current[tabs.length - 1]
+                up.push(prevRef?.current ? (findNodeHandle(prevRef.current) as number) : null)
+            }
         }
         setFocusChain({ down, up })
     }, [tabs.length])
@@ -158,6 +168,7 @@ export function SidebarShell({
 
                         const nextFocusDown = focusChain ? focusChain.down[index] : undefined
                         const nextFocusUp = focusChain ? focusChain.up[index] : undefined
+                        const nextFocusRight = contentWrapperTag ?? undefined
 
                         return (
                             <SidebarButton
@@ -173,9 +184,25 @@ export function SidebarShell({
                                 pressableRef={pressableRefs.current[index]!}
                                 nextFocusDown={nextFocusDown}
                                 nextFocusUp={nextFocusUp}
+                                nextFocusRight={nextFocusRight}
                             />
                         )
                     })}
+
+                    <SidebarButton
+                        focused={false}
+                        btnFocused={focusedIndex === tabs.length}
+                        onPress={() => router.push("/(app)/(tabs)/discover/search")}
+                        onFocus={() => setFocusedIndex(tabs.length)}
+                        onBlur={() => setFocusedIndex(curr => curr === tabs.length ? null : curr)}
+                        tab={{ show: true, name: "search", displayName: "Search", icon: "search-outline" }}
+                        animatedLabelStyle={animatedLabelStyle}
+                        viewer={user}
+                        pressableRef={pressableRefs.current[tabs.length]!}
+                        nextFocusDown={focusChain ? focusChain.down[tabs.length] : undefined}
+                        nextFocusUp={focusChain ? focusChain.up[tabs.length] : undefined}
+                        nextFocusRight={contentWrapperTag ?? undefined}
+                    />
                 </View>
 
                 <View className="h-24 justify-center px-6 mb-6">
@@ -204,6 +231,8 @@ function SidebarButton({
     pressableRef,
     nextFocusDown,
     nextFocusUp,
+    nextFocusRight,
+    nextFocusLeft,
 }: {
     focused: boolean
     btnFocused: boolean
@@ -216,6 +245,8 @@ function SidebarButton({
     pressableRef: React.RefObject<React.ElementRef<typeof Pressable>>
     nextFocusDown?: number | null
     nextFocusUp?: number | null
+    nextFocusRight?: number | null
+    nextFocusLeft?: number | null
 }) {
     return (
         <Pressable
@@ -228,6 +259,8 @@ function SidebarButton({
             onBlur={onBlur}
             {...(nextFocusDown ? { nextFocusDown } as any : {})}
             {...(nextFocusUp ? { nextFocusUp } as any : {})}
+            {...(nextFocusRight ? { nextFocusRight } as any : {})}
+            {...(nextFocusLeft ? { nextFocusLeft } as any : {})}
             className={cn(
                 "flex-row items-center h-14 rounded-2xl gap-4 px-3.5 w-full border border-transparent",
                 focused && "bg-brand-500/10",

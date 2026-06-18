@@ -115,6 +115,7 @@ export function DownloadedMediaShelf<T extends "anime" | "manga">({ type, items 
             <FlatList
                 data={items}
                 horizontal
+                focusable={false}
                 showsHorizontalScrollIndicator={false}
                 keyExtractor={keyExtractor}
                 renderItem={renderItem}

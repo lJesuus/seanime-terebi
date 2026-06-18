@@ -1,3 +1,4 @@
+import { useIsTV } from "@/hooks/use-device"
 import { Text } from "@/components/ui/text"
 import { cn } from "@/lib/utils"
 import * as React from "react"
@@ -16,6 +17,7 @@ export function InlineSelect<T extends string>({
     nullable = true,
     onSelect,
 }: InlineSelectProps<T>) {
+    const isTV = useIsTV()
     return (
         <View className="flex-row flex-wrap gap-2">
             {options.map(opt => {
@@ -24,6 +26,7 @@ export function InlineSelect<T extends string>({
                     <Pressable
                         key={opt.value}
                         onPress={() => onSelect(selected && nullable ? null : opt.value)}
+                        focusable={isTV}
                         className={cn(
                             "h-9 px-4 rounded-xl border items-center justify-center active:opacity-70",
                             selected

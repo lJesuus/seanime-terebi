@@ -2,17 +2,15 @@ import { AL_BaseManga } from "@/api/generated/types"
 import { DownloadedMangaList } from "@/components/features/manga/downloaded-manga-list"
 import { HorizontalMediaCardList } from "@/components/features/media/horizontal-media-card-list"
 import { LibraryHeroCarousel } from "@/components/features/media/library-hero-carousel"
-import { MediaEntryGrid } from "@/components/features/media/media-entry-grid"
 import { TabFadeView } from "@/components/layout/tab-fade-view"
 import { CenteredSpinner } from "@/components/shared/centered-spinner"
-import { LIBRARY_SEARCH_HEADER_BASE_HEIGHT, LibrarySearchHeader } from "@/components/shared/library-search-header"
 import { LuffyError } from "@/components/shared/luffy-error"
 import { OfflineBanner } from "@/components/shared/offline-banner"
 import { useIOSScrollRefreshRateWorkaround } from "@/hooks/use-ios-scroll-refresh-rate-workaround"
 import { useIsTV } from "@/hooks/use-device"
 import { useMangaLibraryCollection } from "@/hooks/use-manga-library-collection"
 import { useIsServerConnected } from "@/lib/offline"
-import { filterEntriesByTitle } from "@/lib/utils/filtering"
+
 import { useIsFocused } from "@react-navigation/native"
 import { router, useFocusEffect } from "expo-router"
 import * as React from "react"
@@ -32,8 +30,6 @@ export default function MangaLibraryScreen() {
     const isTV = useIsTV()
     const isFocused = useIsFocused()
     const insets = useSafeAreaInsets()
-    const [searchQuery, setSearchQuery] = React.useState("")
-    const deferredSearchQuery = React.useDeferredValue(searchQuery)
     const [isPullRefreshing, setIsPullRefreshing] = React.useState(false)
 
     const scrollY = useSharedValue(0)
@@ -56,20 +52,6 @@ export default function MangaLibraryScreen() {
     React.useEffect(() => {
         refetchRef.current = refetch
     }, [refetch])
-
-    const allEntries = React.useMemo(
-        () => libraryCollectionList.flatMap(list => list?.entries ?? []),
-        [libraryCollectionList],
-    )
-
-    const searchResults = React.useMemo(() => {
-        if (!deferredSearchQuery.trim()) return []
-        return filterEntriesByTitle(allEntries, deferredSearchQuery)
-            .map(e => e.media!)
-            .filter(Boolean)
-    }, [allEntries, deferredSearchQuery])
-
-    const isSearching = searchQuery.trim().length > 0
 
     const currentlyReadingEntries = React.useMemo(() => {
         return libraryCollectionList.find(item => item.type === "CURRENT")?.entries ?? []
@@ -96,8 +78,7 @@ export default function MangaLibraryScreen() {
         }, [isConnected]),
     )
 
-    const hasHero = isConnected && currentlyReadingEntries.length > 0 && !isSearching
-    const searchHeaderHeight = isConnected ? LIBRARY_SEARCH_HEADER_BASE_HEIGHT : 0
+    const hasHero = isConnected && currentlyReadingEntries.length > 0
 
     const handleRefresh = React.useCallback(() => {
         setIsPullRefreshing(true)
@@ -145,68 +126,47 @@ export default function MangaLibraryScreen() {
 
             <TabFadeView>
                 <View className="flex-1">
-                    {isSearching ? (
-                        <MediaEntryGrid
-                            type="manga"
-                            media={searchResults}
-                            query={searchQuery}
-                            onPress={(media) => router.push(`/(app)/entry/manga/${media.id}`)}
-                            topPadding={searchHeaderHeight}
-                        />
-                    ) : (
-                        <Animated.FlatList
-                            key={isConnected ? "online" : "offline"}
-                            data={isConnected ? shelfSections : []}
-                            renderItem={renderShelfSection}
-                            keyExtractor={(item) => item.key}
-                            ListHeaderComponent={
-                                hasHero ? (
-                                    <LibraryHeroCarousel
-                                        type="manga"
-                                        mangaItems={currentlyReadingEntries}
-                                        isFocused={isFocused}
-                                        scrollY={scrollY}
-                                    />
-                                ) : null
-                            }
-                            ListFooterComponent={<DownloadedMangaList />}
-                            ListEmptyComponent={isConnected && currentlyReadingEntries.length === 0 ? (
-                                <LuffyError
-                                    title="Your manga library is empty"
-                                    description="Add manga to your collection or use the Discover tab to find something to read."
+                    <Animated.FlatList
+                        key={isConnected ? "online" : "offline"}
+                        data={isConnected ? shelfSections : []}
+                        renderItem={renderShelfSection}
+                        keyExtractor={(item) => item.key}
+                        ListHeaderComponent={
+                            hasHero ? (
+                                <LibraryHeroCarousel
+                                    type="manga"
+                                    mangaItems={currentlyReadingEntries}
+                                    isFocused={isFocused}
+                                    scrollY={scrollY}
                                 />
-                            ) : null}
-                            contentInsetAdjustmentBehavior="never"
-                            contentContainerStyle={{
-                                paddingTop: hasHero ? 0 : searchHeaderHeight,
-                                paddingBottom: 80,
-                            }}
-                            showsVerticalScrollIndicator={false}
-                            refreshControl={refreshControl}
-                            initialNumToRender={2}
-                            maxToRenderPerBatch={2}
-                            updateCellsBatchingPeriod={16}
-                            windowSize={5}
-                            removeClippedSubviews={!isTV}
-                            onScroll={scrollHandler}
-                            scrollEventThrottle={16}
-                        />
-                    )}
-
-                    {isConnected && (
-                        <LibrarySearchHeader
-                            value={searchQuery}
-                            onChangeText={setSearchQuery}
-                            placeholder="Search manga..."
-                            scrollY={scrollY}
-                            hasHero={hasHero}
-                        />
-                    )}
+                            ) : null
+                        }
+                        ListFooterComponent={<DownloadedMangaList />}
+                        ListEmptyComponent={isConnected && currentlyReadingEntries.length === 0 ? (
+                            <LuffyError
+                                title="Your manga library is empty"
+                                description="Add manga to your collection or use the Discover tab to find something to read."
+                            />
+                        ) : null}
+                        contentInsetAdjustmentBehavior="never"
+                        contentContainerStyle={{
+                            paddingTop: 0,
+                            paddingBottom: 80,
+                        }}
+                        showsVerticalScrollIndicator={false}
+                        refreshControl={refreshControl}
+                        initialNumToRender={2}
+                        maxToRenderPerBatch={2}
+                        updateCellsBatchingPeriod={16}
+                        windowSize={5}
+                        removeClippedSubviews={!isTV}
+                        onScroll={scrollHandler}
+                        scrollEventThrottle={16}
+                    />
                 </View>
             </TabFadeView>
         </View>
     )
 }
-
 
 

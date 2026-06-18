@@ -1,5 +1,6 @@
 import type { HibikeManga_SearchResult } from "@/api/generated/types"
 import { useGetMangaMapping, useMangaManualMapping, useMangaManualSearch, useRemoveMangaMapping } from "@/api/hooks/manga.hooks"
+import { useIsTV } from "@/hooks/use-device"
 import { SheetFooter, SheetFooterButton } from "@/components/shared/sheet-footer"
 import { SeaBottomSheet } from "@/components/ui/bottom-sheet"
 import { cn } from "@/lib/utils"
@@ -23,6 +24,7 @@ export function MangaManualMatchModal({
     provider,
     mediaTitle,
 }: MangaManualMatchModalProps) {
+    const isTV = useIsTV()
     const [query, setQuery] = React.useState(mediaTitle)
 
     const { data: currentMapping } = useGetMangaMapping({ provider: provider ?? undefined, mediaId })
@@ -106,6 +108,7 @@ export function MangaManualMatchModal({
                     <Pressable
                         onPress={handleSearch}
                         disabled={isSearching || !query.trim() || !provider}
+                        focusable={isTV}
                         className={cn(
                             "h-11 px-4 items-center justify-center rounded-xl",
                             isSearching || !query.trim() || !provider
@@ -140,6 +143,7 @@ export function MangaManualMatchModal({
                         key={`${result.id}-${index}`}
                         onPress={() => handleSelectResult(result)}
                         disabled={isMapping}
+                        focusable={isTV}
                         className={cn(
                             "px-4 py-3.5 bg-card/30 border-x border-border/50 active:bg-white/10",
                             index === 0 && "rounded-t-2xl border-t",

@@ -2,7 +2,6 @@ import { Anime_Episode } from "@/api/generated/types"
 import { animeEntryPlaybackIntentAtom } from "@/atoms/anime-entry.atoms"
 import { useServerStatus } from "@/atoms/server.atoms"
 import { AnimeEntryDownloadedView } from "@/components/features/media/anime-entry-downloaded-view"
-import { AnimeEntryInfoView } from "@/components/features/media/anime-entry-info-view"
 import { AnimeEntryLibraryView } from "@/components/features/media/anime-entry-library-view"
 import { useAnimeEntryScreen } from "@/components/features/media/anime-entry-screen-context"
 import { AnimeEntryView } from "@/components/features/media/anime-entry-view-switcher"
@@ -71,13 +70,11 @@ export function AnimeEntryScreen({ initialView = "library" }: AnimeEntryScreenPr
     const libraryScrollY = useSharedValue(0)
     const torrentstreamScrollY = useSharedValue(0)
     const onlinestreamScrollY = useSharedValue(0)
-    const infoScrollY = useSharedValue(0)
     const downloadedScrollY = useSharedValue(0)
     const [mountedViews, setMountedViews] = React.useState<Record<AnimeEntryView, boolean>>({
         library: initialView === "library",
         torrentstream: initialView === "torrentstream",
         onlinestream: initialView === "onlinestream",
-        info: initialView === "info",
         downloaded: initialView === "downloaded",
     })
     const activeScrollY = useMemo(() => {
@@ -86,15 +83,13 @@ export function AnimeEntryScreen({ initialView = "library" }: AnimeEntryScreenPr
                 return torrentstreamScrollY
             case "onlinestream":
                 return onlinestreamScrollY
-            case "info":
-                return infoScrollY
             case "downloaded":
                 return downloadedScrollY
             case "library":
             default:
                 return libraryScrollY
         }
-    }, [currentView, downloadedScrollY, infoScrollY, libraryScrollY, onlinestreamScrollY, torrentstreamScrollY])
+    }, [currentView, downloadedScrollY, libraryScrollY, onlinestreamScrollY, torrentstreamScrollY])
 
     const { mainEpisodes, specialEpisodes, ncEpisodes, unwatchedMainEpisodes, progress } = useMemo(() => {
         if (!entry?.episodes) {
@@ -160,7 +155,6 @@ export function AnimeEntryScreen({ initialView = "library" }: AnimeEntryScreenPr
             library: currentView === "library",
             torrentstream: currentView === "torrentstream",
             onlinestream: currentView === "onlinestream",
-            info: currentView === "info",
             downloaded: currentView === "downloaded",
         })
     }, [currentView, isFocused])
@@ -281,7 +275,6 @@ export function AnimeEntryScreen({ initialView = "library" }: AnimeEntryScreenPr
                             showDeferredContent={isPrimaryBodyReady}
                             scrollY={libraryScrollY}
                             showHeaderBackground={false}
-                            onTitlePress={() => setCurrentView("info")}
                             currentView={currentView}
                             onViewChange={setCurrentView}
                             isOffline={isOffline}
@@ -299,11 +292,12 @@ export function AnimeEntryScreen({ initialView = "library" }: AnimeEntryScreenPr
                             contentContainerStyle={{ paddingBottom: 180 }}
                             scrollY={torrentstreamScrollY}
                             showHeaderBackground={false}
-                            onTitlePress={() => setCurrentView("info")}
                             currentView={currentView}
                             onViewChange={setCurrentView}
                             isOffline={isOffline}
                             hiddenViews={hiddenViews}
+                            mediaId={entry.media.id}
+                            fallbackDescription={entry.media.description}
                         >
                             <OfflineBanner />
                             <AnimeEntryTorrentStreamSection entry={entry} />
@@ -320,35 +314,15 @@ export function AnimeEntryScreen({ initialView = "library" }: AnimeEntryScreenPr
                             contentContainerStyle={{ paddingBottom: 180 }}
                             scrollY={onlinestreamScrollY}
                             showHeaderBackground={false}
-                            onTitlePress={() => setCurrentView("info")}
                             currentView={currentView}
                             onViewChange={setCurrentView}
                             isOffline={isOffline}
                             hiddenViews={hiddenViews}
+                            mediaId={entry.media.id}
+                            fallbackDescription={entry.media.description}
                         >
                             <OfflineBanner />
                             <AnimeEntryOnlinestreamSection entry={entry} />
-                        </MediaEntryScrollShell>
-                    </View>
-                )}
-
-                {mountedViews.info && (
-                    <View style={{ flex: currentView === "info" ? 1 : 0, display: currentView === "info" ? "flex" : "none" }}>
-                        <MediaEntryScrollShell
-                            entry={entry}
-                            type="anime"
-                            refreshControl={refreshControl}
-                            contentContainerStyle={{ paddingBottom: 180 }}
-                            scrollY={infoScrollY}
-                            showHeaderBackground={false}
-                            onTitlePress={() => setCurrentView("info")}
-                            currentView={currentView}
-                            onViewChange={setCurrentView}
-                            isOffline={isOffline}
-                            hiddenViews={hiddenViews}
-                        >
-                            <OfflineBanner />
-                            <AnimeEntryInfoView mediaId={entry.media.id} fallbackDescription={entry.media.description} />
                         </MediaEntryScrollShell>
                     </View>
                 )}
@@ -362,11 +336,12 @@ export function AnimeEntryScreen({ initialView = "library" }: AnimeEntryScreenPr
                             contentContainerStyle={{ paddingBottom: 180 }}
                             scrollY={downloadedScrollY}
                             showHeaderBackground={false}
-                            onTitlePress={() => setCurrentView("info")}
                             currentView={currentView}
                             onViewChange={setCurrentView}
                             isOffline={isOffline}
                             hiddenViews={hiddenViews}
+                            mediaId={entry.media.id}
+                            fallbackDescription={entry.media.description}
                         >
                             <OfflineBanner />
                             <AnimeEntryDownloadedView entry={entry} />

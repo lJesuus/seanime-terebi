@@ -135,33 +135,33 @@ export default function ScheduleScreen() {
             <TabFadeView>
 
                 <View className={cn("flex-row items-center justify-between", isTV ? "px-6 pt-4 pb-2" : "px-4 pt-2 pb-1")}>
-                    <TvFocusablePressable onPress={goToToday} scaleAmount={1.1} hitSlop={12}>
+                    <TvFocusablePressable onPress={goToToday}  hitSlop={12}>
                         <View className="p-2">
                             <Ionicons name="today-outline" size={isTV ? 28 : 22} color="rgba(255,255,255,0.8)" />
                         </View>
                     </TvFocusablePressable>
 
                     <View className={cn("flex-row items-center", isTV ? "gap-5" : "gap-3")}>
-                        <TvFocusablePressable onPress={goToPreviousWeek} scaleAmount={1.1} hitSlop={12}>
+                        <TvFocusablePressable onPress={goToPreviousWeek}  hitSlop={12}>
                             <View className="p-1">
                                 <Ionicons name="chevron-back" size={isTV ? 26 : 20} color="rgba(255,255,255,0.6)" />
                             </View>
                         </TvFocusablePressable>
-                        <TvFocusablePressable onPress={() => setMonthPickerOpen(true)} scaleAmount={1.03} hitSlop={8}>
+                        <TvFocusablePressable onPress={() => setMonthPickerOpen(true)}  hitSlop={8}>
                             <View className="px-2 py-1 rounded-lg">
                                 <Text className={cn("font-semibold text-white/90", isTV ? "text-2xl" : "text-base")}>
                                     {monthYearLabel}
                                 </Text>
                             </View>
                         </TvFocusablePressable>
-                        <TvFocusablePressable onPress={goToNextWeek} scaleAmount={1.1} hitSlop={12}>
+                        <TvFocusablePressable onPress={goToNextWeek}  hitSlop={12}>
                             <View className="p-1">
                                 <Ionicons name="chevron-forward" size={isTV ? 26 : 20} color="rgba(255,255,255,0.6)" />
                             </View>
                         </TvFocusablePressable>
                     </View>
 
-                    <TvFocusablePressable onPress={() => setSettingsOpen(true)} scaleAmount={1.1} hitSlop={12}>
+                    <TvFocusablePressable onPress={() => setSettingsOpen(true)}  hitSlop={12}>
                         <View className="p-2">
                             <Ionicons name="options-outline" size={isTV ? 28 : 22} color="rgba(255,255,255,0.8)" />
                         </View>
@@ -173,6 +173,8 @@ export default function ScheduleScreen() {
                     selectedDate={selectedDate}
                     onSelectDate={setSelectedDate}
                     getEventCount={getEventCount}
+                    onNavigatePrevWeek={goToPreviousWeek}
+                    onNavigateNextWeek={goToNextWeek}
                 />
 
                 {!isConnected ? (
@@ -234,7 +236,6 @@ type ScheduleEvent = Anime_ScheduleItem & {
 function TvFocusablePressable({
     children,
     onPress,
-    scaleAmount = 1.05,
     className = "",
     style,
     hitSlop,
@@ -242,22 +243,12 @@ function TvFocusablePressable({
 }: {
     children: React.ReactNode
     onPress?: () => void
-    scaleAmount?: number
     className?: string
     style?: any
     hitSlop?: number
 }) {
     const isTV = useIsTV()
     const [isFocused, setIsFocused] = React.useState(false)
-    const scale = useSharedValue(1)
-
-    React.useEffect(() => {
-        scale.set(withSpring(isFocused ? scaleAmount : 1, { damping: 15, stiffness: 200 }))
-    }, [isFocused, scale, scaleAmount])
-
-    const animatedStyle = useAnimatedStyle(() => ({
-        transform: [{ scale: scale.value }],
-    }))
 
     return (
         <Pressable
@@ -268,15 +259,15 @@ function TvFocusablePressable({
             hitSlop={hitSlop}
             {...props}
         >
-            <Animated.View
+            <View
                 className={cn(
                     className,
-                    isFocused && isTV ? "border border-brand-400/60" : "",
+                    isFocused && isTV ? "border border-brand-400/60" : "border border-transparent",
                 )}
-                style={isTV ? [style, animatedStyle] : style}
+                style={style}
             >
                 {children}
-            </Animated.View>
+            </View>
         </Pressable>
     )
 }
@@ -288,17 +279,46 @@ function WeekDaySelector({
     selectedDate,
     onSelectDate,
     getEventCount,
+    onNavigatePrevWeek,
+    onNavigateNextWeek,
 }: {
     weekDays: Date[]
     selectedDate: Date
     onSelectDate: (date: Date) => void
     getEventCount: (date: Date) => number
+    onNavigatePrevWeek?: () => void
+    onNavigateNextWeek?: () => void
 }) {
     const isTV = useIsTV()
     const today = new Date()
+    const [navDirection, setNavDirection] = React.useState<"prev" | "next" | null>(null)
+
+    const handlePrevWeek = React.useCallback(() => {
+        setNavDirection("prev")
+        onNavigatePrevWeek?.()
+    }, [onNavigatePrevWeek])
+
+    const handleNextWeek = React.useCallback(() => {
+        setNavDirection("next")
+        onNavigateNextWeek?.()
+    }, [onNavigateNextWeek])
+
+    React.useEffect(() => {
+        if (navDirection) {
+            const timer = setTimeout(() => setNavDirection(null), 100)
+            return () => clearTimeout(timer)
+        }
+    }, [navDirection])
 
     return (
-        <View className={cn("flex-row justify-around", isTV ? "px-4 py-4" : "px-2 py-3")}>
+        <View className={cn("flex-row items-center", isTV ? "px-4 py-4" : "px-2 py-3")}>
+            {isTV && (
+                <Pressable
+                    focusable
+                    onFocus={handlePrevWeek}
+                    style={{ width: 1, height: 40, opacity: 0 }}
+                />
+            )}
             {weekDays.map((day, i) => {
                 const isToday = isSameDay(day, today)
                 const isSelected = isSameDay(day, selectedDate)
@@ -316,9 +336,20 @@ function WeekDaySelector({
                         dayNumber={dayNumber}
                         onSelect={onSelectDate}
                         isTV={isTV}
+                        hasTVPreferredFocus={isTV && (
+                            (i === 0 && navDirection === "next") ||
+                            (i === 6 && navDirection === "prev")
+                        )}
                     />
                 )
             })}
+            {isTV && (
+                <Pressable
+                    focusable
+                    onFocus={handleNextWeek}
+                    style={{ width: 1, height: 40, opacity: 0 }}
+                />
+            )}
         </View>
     )
 }
@@ -332,6 +363,7 @@ function WeekDayItem({
     dayNumber,
     onSelect,
     isTV,
+    hasTVPreferredFocus,
 }: {
     day: Date
     dayIndex: number
@@ -341,33 +373,28 @@ function WeekDayItem({
     dayNumber: string
     onSelect: (date: Date) => void
     isTV: boolean
+    hasTVPreferredFocus?: boolean
 }) {
     const [isFocused, setIsFocused] = React.useState(false)
-    const scale = useSharedValue(1)
-
-    React.useEffect(() => {
-        scale.set(withSpring(isFocused ? 1.12 : 1, { damping: 15, stiffness: 200 }))
-    }, [isFocused, scale])
-
-    const animatedStyle = useAnimatedStyle(() => ({
-        transform: [{ scale: scale.value }],
-    }))
 
     return (
         <Pressable
             focusable={isTV}
-            onFocus={() => setIsFocused(true)}
+            hasTVPreferredFocus={hasTVPreferredFocus}
+            onFocus={() => {
+                setIsFocused(true)
+                if (isTV) onSelect(day)
+            }}
             onBlur={() => setIsFocused(false)}
             className="items-center flex-1"
             onPress={() => onSelect(day)}
             hitSlop={4}
         >
-            <Animated.View
+            <View
                 className={cn(
                     "items-center",
                     isFocused && isTV ? "rounded-xl bg-white/5 px-2 py-1" : "",
                 )}
-                style={isTV ? animatedStyle : undefined}
             >
                 <Text
                     className={cn(
@@ -399,19 +426,20 @@ function WeekDayItem({
                     </Text>
                 </View>
 
-                {count > 0 && (
-                    <Text
-                        className={cn(
-                            "mt-1 font-semibold",
-                            isTV ? "text-xs" : "text-[10px]",
-                            isSelected ? "text-brand-300" : "text-white/30",
-                        )}
-                    >
-                        {count}
-                    </Text>
-                )}
-                {count === 0 && <View className={isTV ? "h-4" : "h-3.5"} />}
-            </Animated.View>
+                <View className="mt-1 h-4 items-center justify-center">
+                    {count > 0 && (
+                        <Text
+                            className={cn(
+                                "font-semibold",
+                                isTV ? "text-xs" : "text-[10px]",
+                                isSelected ? "text-brand-300" : "text-white/30",
+                            )}
+                        >
+                            {count}
+                        </Text>
+                    )}
+                </View>
+            </View>
         </Pressable>
     )
 }
@@ -686,7 +714,7 @@ function MonthYearPicker({
         >
             <View className="gap-4">
                 <View className="flex-row items-center justify-center gap-5">
-                    <TvFocusablePressable onPress={() => setDisplayYear((y) => y - 1)} scaleAmount={1.1} hitSlop={12}>
+                    <TvFocusablePressable onPress={() => setDisplayYear((y) => y - 1)}  hitSlop={12}>
                         <View className="p-2">
                             <Ionicons name="chevron-back" size={isTV ? 28 : 22} color="rgba(255,255,255,0.6)" />
                         </View>
@@ -694,7 +722,7 @@ function MonthYearPicker({
                     <Text className={cn("font-bold text-white min-w-[60px] text-center", isTV ? "text-2xl" : "text-xl")}>
                         {displayYear}
                     </Text>
-                    <TvFocusablePressable onPress={() => setDisplayYear((y) => y + 1)} scaleAmount={1.1} hitSlop={12}>
+                    <TvFocusablePressable onPress={() => setDisplayYear((y) => y + 1)}  hitSlop={12}>
                         <View className="p-2">
                             <Ionicons name="chevron-forward" size={isTV ? 28 : 22} color="rgba(255,255,255,0.6)" />
                         </View>

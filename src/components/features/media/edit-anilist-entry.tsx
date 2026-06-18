@@ -11,6 +11,7 @@ import { Separator } from "@/components/ui/separator"
 import { Text } from "@/components/ui/text"
 import { useIsServerConnected } from "@/lib/offline"
 import { cn } from "@/lib/utils"
+import { useIsTV } from "@/hooks/use-device"
 import { Ionicons } from "@expo/vector-icons"
 import Slider from "@react-native-community/slider"
 import * as Haptics from "expo-haptics"
@@ -393,6 +394,7 @@ type ScoreStepperProps = {
 }
 
 const ScoreStepper = React.memo(function ScoreStepper({ value, onChange }: ScoreStepperProps) {
+    const isTV = useIsTV()
     const valueRef = React.useRef(value)
     React.useEffect(() => {
         valueRef.current = value
@@ -436,6 +438,7 @@ const ScoreStepper = React.memo(function ScoreStepper({ value, onChange }: Score
                 onPressIn={() => startTimer("decrement")}
                 onPressOut={stopTimer}
                 disabled={currentScore <= 0}
+                focusable={isTV}
                 className={cn(
                     "w-10 h-7 items-center justify-center rounded-lg active:bg-white/5",
                     currentScore <= 0 && "opacity-30",
@@ -455,6 +458,7 @@ const ScoreStepper = React.memo(function ScoreStepper({ value, onChange }: Score
                 onPressIn={() => startTimer("increment")}
                 onPressOut={stopTimer}
                 disabled={currentScore >= 10}
+                focusable={isTV}
                 className={cn(
                     "w-10 h-7 items-center justify-center rounded-lg active:bg-white/5",
                     currentScore >= 10 && "opacity-30",

@@ -25,6 +25,9 @@ export type MangaReaderSettings = {
     pageGapShadow: boolean
     showProgressBar: boolean
     doublePageOffset: number
+    zoomLevel: number
+    brightness: number
+    fitToWidth: boolean
 }
 
 type MangaReaderPosition = {
@@ -56,6 +59,9 @@ export function getDefaultMangaReaderSettings(isCompact: boolean): MangaReaderSe
             pageGapShadow: true,
             showProgressBar: true,
             doublePageOffset: 0,
+            zoomLevel: 1,
+            brightness: 1,
+            fitToWidth: true,
         }
     }
 
@@ -67,6 +73,9 @@ export function getDefaultMangaReaderSettings(isCompact: boolean): MangaReaderSe
         pageGapShadow: true,
         showProgressBar: true,
         doublePageOffset: 0,
+        zoomLevel: 1,
+        brightness: 1,
+        fitToWidth: true,
     }
 }
 

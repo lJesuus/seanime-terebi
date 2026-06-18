@@ -1,106 +1,107 @@
-import { TabBarIcon } from "@/components/navigation/tab-bar-icon"
+import { useIsTV } from "@/hooks/use-device"
+import { TvFocusablePressable } from "@/components/ui/tv-focusable"
 import { cn } from "@/lib/utils"
 import Ionicons from "@expo/vector-icons/Ionicons"
 import * as React from "react"
-import { Platform, Pressable, View } from "react-native"
-import Animated, { interpolate, useAnimatedStyle, useSharedValue, withSpring } from "react-native-reanimated"
+import { Pressable, Text, View } from "react-native"
 
-export type MangaEntryView = "chapters" | "info" | "downloaded"
+export type MangaEntryView = "chapters" | "downloaded"
 
 type MangaEntryViewSwitcherProps = {
     currentView: MangaEntryView
     onViewChange: (view: MangaEntryView) => void
-    bottomInset: number
     isOffline?: boolean
+    hiddenViews?: Set<MangaEntryView>
+    nextFocusUp?: number | null
+    nextFocusDown?: number | null
 }
 
 const VIEW_ITEMS: Array<{ label: string, icon: React.ComponentProps<typeof Ionicons>["name"], view: MangaEntryView }> = [
     { label: "Chapters", icon: "list-outline", view: "chapters" },
-    { label: "Info", icon: "information-circle-outline", view: "info" },
     { label: "Downloads", icon: "download-outline", view: "downloaded" },
 ]
 
 const OFFLINE_DISABLED_VIEWS: Set<MangaEntryView> = new Set(["chapters"])
 
-export function MangaEntryViewSwitcher({ currentView, onViewChange, bottomInset, isOffline }: MangaEntryViewSwitcherProps) {
+export function MangaEntryViewSwitcher({ currentView, onViewChange, isOffline, hiddenViews, nextFocusUp, nextFocusDown }: MangaEntryViewSwitcherProps) {
+    const isTV = useIsTV()
+    const visibleItems = React.useMemo(
+        () => hiddenViews?.size ? VIEW_ITEMS.filter(item => !hiddenViews.has(item.view)) : VIEW_ITEMS,
+        [hiddenViews],
+    )
+
+    if (isTV) {
+        return (
+            <View className="w-full border-b border-white/10 bg-background px-4 py-1">
+                <View className="flex-row gap-1 justify-center">
+                    {visibleItems.map((item, idx) => {
+                        const disabled = isOffline && OFFLINE_DISABLED_VIEWS.has(item.view)
+                        return (
+                            <TvFocusablePressable
+                                key={item.view}
+                                className={cn(
+                                    "flex-row items-center justify-center px-3 py-2 rounded-lg gap-2",
+                                    currentView === item.view ? "bg-brand-500/20" : "",
+                                )}
+                                focusedClassName="bg-white/10 border border-brand-400/60"
+                                onPress={disabled ? undefined : () => onViewChange(item.view)}
+                                nextFocusUp={idx === 0 ? (nextFocusUp ?? undefined) : undefined}
+                                nextFocusDown={idx === visibleItems.length - 1 ? (nextFocusDown ?? undefined) : undefined}
+                            >
+                                <Ionicons
+                                    name={item.icon}
+                                    size={20}
+                                    color={currentView === item.view && !disabled ? "#a78bfa" : disabled ? "rgba(255,255,255,0.25)" : "rgba(255,255,255,0.5)"}
+                                />
+                                <Text
+                                    className={cn(
+                                        "font-semibold text-sm",
+                                        currentView === item.view ? "text-brand-300" : "text-white/60",
+                                        disabled ? "text-white/25" : "",
+                                    )}
+                                >
+                                    {item.label}
+                                </Text>
+                            </TvFocusablePressable>
+                        )
+                    })}
+                </View>
+            </View>
+        )
+    }
+
     return (
-        <View
-            pointerEvents="box-none"
-            className="absolute left-4 right-4"
-            style={{
-                bottom: Math.max(bottomInset, Platform.OS === "ios" ? 20 : 10),
-            }}
-        >
-            <View
-                className="flex-row justify-between overflow-hidden rounded-full bg-background px-5 py-4"
-                style={{ elevation: 10 }}
-            >
-                {VIEW_ITEMS.map(item => {
+        <View className="w-full border-b border-white/10 bg-background">
+            <View className="flex-row px-3">
+                {visibleItems.map((item) => {
                     const disabled = isOffline && OFFLINE_DISABLED_VIEWS.has(item.view)
                     return (
-                        <MangaEntryViewButton
+                        <Pressable
                             key={item.view}
-                            label={item.label}
-                            icon={item.icon}
-                            active={currentView === item.view}
-                            onPress={() => onViewChange(item.view)}
-                            disabled={disabled}
-                        />
+                            onPress={disabled ? undefined : () => onViewChange(item.view)}
+                            className="flex-1 py-3 items-center"
+                        >
+                            <Ionicons
+                                name={item.icon}
+                                size={20}
+                                color={currentView === item.view && !disabled ? "#a78bfa" : disabled ? "rgba(255,255,255,0.25)" : "rgba(255,255,255,0.5)"}
+                            />
+                            <Text
+                                className={cn(
+                                    "text-xs mt-0.5",
+                                    currentView === item.view && !disabled ? "text-brand-300 font-semibold" : "text-gray",
+                                    disabled ? "text-white/25" : "",
+                                )}
+                            >
+                                {item.label}
+                            </Text>
+                            {currentView === item.view && (
+                                <View className="w-5 h-0.5 rounded-full bg-brand-500 mt-0.5" />
+                            )}
+                        </Pressable>
                     )
                 })}
             </View>
         </View>
-    )
-}
-
-type MangaEntryViewButtonProps = {
-    label: string
-    icon: React.ComponentProps<typeof Ionicons>["name"]
-    active: boolean
-    onPress: () => void
-    disabled?: boolean
-}
-
-function MangaEntryViewButton({ label, icon, active, onPress, disabled }: MangaEntryViewButtonProps) {
-    const scale = useSharedValue(active ? 0 : 1)
-
-    React.useEffect(() => {
-        scale.set(withSpring(active ? 0 : 1, { duration: 350 }))
-    }, [active, scale])
-
-    const animatedIconStyle = useAnimatedStyle(() => {
-        return {
-            transform: [{ scale: interpolate(scale.value, [0, 1], [1.2, 1]) }],
-            top: interpolate(scale.value, [0, 1], [1, 9]),
-            opacity: disabled ? 0.25 : 1,
-        }
-    })
-
-    const animatedTextStyle = useAnimatedStyle(() => {
-        return {
-            opacity: disabled ? 0 : interpolate(scale.value, [0, 1], [1, 0]),
-            top: interpolate(scale.value, [1, 0], [20, 4]),
-        }
-    })
-
-    return (
-        <Pressable
-            onPress={disabled ? undefined : onPress}
-            className="flex-1 items-center justify-center gap-1"
-        >
-            <Animated.View style={animatedIconStyle}>
-                <TabBarIcon
-                    name={icon}
-                    size={24}
-                    className={cn("text-gray", { "text-brand-300": active && !disabled })}
-                />
-            </Animated.View>
-            <Animated.Text
-                className={cn("text-xs text-gray", { "text-brand-300": active && !disabled })}
-                style={animatedTextStyle}
-            >
-                {label}
-            </Animated.Text>
-        </Pressable>
     )
 }

@@ -2,6 +2,7 @@ import { AL_BaseAnime, AL_BaseManga, AL_MediaFormat, AL_MediaStatus } from "@/ap
 import { useGetAnimeEntry } from "@/api/hooks/anime_entries.hooks"
 import { useGetMangaEntry } from "@/api/hooks/manga.hooks"
 import { useServerStatus } from "@/atoms/server.atoms"
+import { useIsTV } from "@/hooks/use-device"
 import { SheetFooter, SheetFooterButton } from "@/components/shared/sheet-footer"
 import { Surface } from "@/components/shared/surface"
 import { SeaBottomSheet } from "@/components/ui/bottom-sheet"
@@ -104,6 +105,7 @@ export function MediaEntryQuickInfoSheet<T extends "anime" | "manga">({
     onOpenChange,
     preferFetchedMedia,
 }: MediaEntryQuickInfoSheetProps<T>) {
+    const isTV = useIsTV()
     if (!media) return null
 
     const serverStatus = useServerStatus()
@@ -162,6 +164,7 @@ export function MediaEntryQuickInfoSheet<T extends "anime" | "manga">({
                     )}
                     {!!displayMedia.siteUrl && (
                         <Pressable
+                            focusable={isTV}
                             className="w-14 rounded-2xl border border-white/10 bg-white/5 items-center justify-center active:bg-white/10"
                             onPress={openOnAniList}
                         >

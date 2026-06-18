@@ -1,5 +1,6 @@
 import { Anime_Entry, Anime_Episode } from "@/api/generated/types"
 import { useServerStatus } from "@/atoms/server.atoms"
+import { useIsTV } from "@/hooks/use-device"
 import { SeaImage } from "@/components/shared/sea-image"
 import { SeaBottomSheet } from "@/components/ui/bottom-sheet"
 import { Button } from "@/components/ui/button"
@@ -33,6 +34,7 @@ export function DownloadEpisodesModal({
     open,
     onOpenChange,
 }: DownloadEpisodesModalProps) {
+    const isTV = useIsTV()
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
     const [page, setPage] = useState(0)
     const startBatch = useStartAnimeBatchDownload(entry)
@@ -292,6 +294,7 @@ export function DownloadEpisodesModal({
                             <Pressable
                                 onPress={() => setPage(Math.max(0, page - 1))}
                                 disabled={page === 0}
+                                focusable={isTV}
                                 className={cn(
                                     "w-8 h-8 rounded-lg items-center justify-center",
                                     page === 0 ? "opacity-25" : "bg-white/5",
@@ -305,6 +308,7 @@ export function DownloadEpisodesModal({
                             <Pressable
                                 onPress={() => setPage(Math.min(totalPages - 1, page + 1))}
                                 disabled={page === totalPages - 1}
+                                focusable={isTV}
                                 className={cn(
                                     "w-8 h-8 rounded-lg items-center justify-center",
                                     page === totalPages - 1 ? "opacity-25" : "bg-white/5",
@@ -354,9 +358,11 @@ type DownloadFilterChipProps = {
 }
 
 function DownloadFilterChip({ label, icon, selected = false, disabled = false, onPress }: DownloadFilterChipProps) {
+    const isTV = useIsTV()
     return (
         <Pressable
             onPress={disabled ? undefined : onPress}
+            focusable={isTV}
             className={cn(
                 "h-8 flex-row items-center gap-1.5 rounded-full border px-3",
                 disabled && "opacity-40",
@@ -373,6 +379,7 @@ function DownloadFilterChip({ label, icon, selected = false, disabled = false, o
 }
 
 function DownloadEpisodeRow({ episode, downloadStatus, selected, watchedProgress, onToggle }: DownloadEpisodeRowProps) {
+    const isTV = useIsTV()
     const serverStatus = useServerStatus()
     const thumbnailWidth = 80
     const isDownloaded = downloadStatus === "completed"
@@ -392,6 +399,7 @@ function DownloadEpisodeRow({ episode, downloadStatus, selected, watchedProgress
     return (
         <Pressable
             onPress={isUnavailable ? undefined : onToggle}
+            focusable={isTV}
             className="flex-row items-center py-2.5 px-1 rounded-xl"
             style={[
                 selected && !isUnavailable && { backgroundColor: "rgba(255,255,255,0.06)" },

@@ -57,6 +57,7 @@ type MangaReaderZoomSurfaceProps = {
     tapExclusionTop?: number
     tapExclusionBottom?: number
     scrollViewRef?: React.RefObject<ScrollView | null>
+    focusable?: boolean
 }
 
 export function MangaReaderZoomSurface({
@@ -76,6 +77,7 @@ export function MangaReaderZoomSurface({
     tapExclusionTop = 0,
     tapExclusionBottom = 0,
     scrollViewRef,
+    focusable,
 }: MangaReaderZoomSurfaceProps) {
     const surfaceKey = instanceKey ?? "default"
     const isNativePinch = pinchEnabled && Platform.OS === "ios" && !disabled
@@ -756,6 +758,7 @@ export function MangaReaderZoomSurface({
                         showsHorizontalScrollIndicator={false}
                         showsVerticalScrollIndicator={false}
                         style={style}
+                        focusable={focusable}
                     >
                         <Animated.View
                             collapsable={false}
@@ -817,6 +820,7 @@ export function MangaReaderZoomSurface({
                 showsHorizontalScrollIndicator={false}
                 showsVerticalScrollIndicator={false}
                 style={style}
+                focusable={focusable}
             >
                 <View collapsable={false}>
                     {children}

@@ -5,16 +5,20 @@ import {
     AL_BaseManga,
     AL_MangaCollection_MediaListCollection_Lists,
     AL_MangaCollection_MediaListCollection_Lists_Entries,
+    AL_MediaFormat,
     AL_MediaListStatus,
+    AL_MediaStatus,
 } from "@/api/generated/types"
 import { useGetRawAnimeCollection } from "@/api/hooks/anilist.hooks"
 import { useGetRawAnilistMangaCollection } from "@/api/hooks/manga.hooks"
 import { useServerStatus } from "@/atoms/server.atoms"
 import { FilterButton } from "@/components/features/discover/search-filter-sheet"
+import { HorizontalMediaCardList } from "@/components/features/media/horizontal-media-card-list"
 import { MediaEntryCard } from "@/components/features/media/media-entry-card"
 import { CollectionFilterSheet, countActiveCollectionFilters } from "@/components/features/my-lists/collection-filter-sheet"
 import { InlineSelect } from "@/components/shared/inline-select"
 import { LibrarySearchBar } from "@/components/shared/library-search-bar"
+import { TvFocusablePressable } from "@/components/ui/tv-focusable"
 import { useIOSScrollRefreshRateWorkaround } from "@/hooks/use-ios-scroll-refresh-rate-workaround"
 import { useIsServerConnected } from "@/lib/offline"
 import { cn } from "@/lib/utils"
@@ -445,5 +449,173 @@ export default function MyListsScreen() {
                 onApply={setFilterParams}
             />
         </View>
+    )
+}
+
+// ── TV Panel ──────────────────────────────────────────────────────
+
+const TV_FORMAT_OPTIONS: { label: string; value: AL_MediaFormat | null }[] = [
+    { label: "All", value: null },
+    { label: "TV", value: "TV" },
+    { label: "Movie", value: "MOVIE" },
+    { label: "OVA", value: "OVA" },
+    { label: "ONA", value: "ONA" },
+    { label: "Special", value: "SPECIAL" },
+]
+
+const TV_STATUS_OPTIONS: { label: string; value: AL_MediaStatus | null }[] = [
+    { label: "All", value: null },
+    { label: "Finished", value: "FINISHED" },
+    { label: "Releasing", value: "RELEASING" },
+    { label: "Not Yet", value: "NOT_YET_RELEASED" },
+    { label: "Cancelled", value: "CANCELLED" },
+    { label: "Hiatus", value: "HIATUS" },
+]
+
+export function MyListsPanel({
+    nextFocusLeft,
+}: {
+    nextFocusLeft?: number | null
+}) {
+    const serverStatus = useServerStatus()
+    const showAdult = serverStatus?.settings?.anilist?.enableAdultContent
+
+    const { data: animeCollection, isLoading: animeLoading } = useGetRawAnimeCollection()
+    const { data: mangaCollection, isLoading: mangaLoading } = useGetRawAnilistMangaCollection()
+
+    const [filtersOpen, setFiltersOpen] = React.useState(false)
+    const [filterParams, setFilterParams] = React.useState<CollectionParams>({ ...DEFAULT_COLLECTION_PARAMS })
+
+    const activeFilterCount = countActiveCollectionFilters(filterParams, "anime")
+
+    const animeEntries = React.useMemo(() => {
+        return (animeCollection?.MediaListCollection?.lists ?? []).flatMap(list => list.entries ?? [])
+    }, [animeCollection])
+
+    const mangaEntries = React.useMemo(() => {
+        return (mangaCollection?.MediaListCollection?.lists ?? []).flatMap(list => list.entries ?? [])
+    }, [mangaCollection])
+
+    const filteredAnimeItems = React.useMemo(() => {
+        return filterListEntries(animeEntries, filterParams, showAdult)
+            .map(e => e.media)
+            .filter(Boolean) as AL_BaseAnime[]
+    }, [animeEntries, filterParams, showAdult])
+
+    const filteredMangaItems = React.useMemo(() => {
+        return filterListEntries(mangaEntries, filterParams, showAdult)
+            .map(e => e.media)
+            .filter(Boolean) as AL_BaseManga[]
+    }, [mangaEntries, filterParams, showAdult])
+
+    const isLoading = animeLoading || mangaLoading
+
+    const clearFilters = React.useCallback(() => {
+        setFilterParams({ ...DEFAULT_COLLECTION_PARAMS })
+    }, [])
+
+    return (
+        <ScrollView className="flex-1 pt-2">
+            <View className="flex-row items-center gap-3 px-4 mb-3">
+                <TvFocusablePressable
+                    className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10"
+                    focusedClassName="border-brand-400/80"
+                    onPress={() => setFiltersOpen(v => !v)}
+                    nextFocusLeft={nextFocusLeft ?? undefined}
+                >
+                    <Ionicons name="funnel" size={14} color="rgba(255,255,255,0.7)" />
+                    <Text className="text-xs text-white/70">Filters</Text>
+                    {activeFilterCount > 0 && (
+                        <View className="w-5 h-5 rounded-full bg-brand-400 items-center justify-center">
+                            <Text className="text-[10px] font-bold text-white">{activeFilterCount}</Text>
+                        </View>
+                    )}
+                </TvFocusablePressable>
+                {activeFilterCount > 0 && (
+                    <TvFocusablePressable
+                        onPress={clearFilters}
+                        className="px-3 py-1.5 rounded-lg bg-white/5"
+                        focusedClassName="border-white/60"
+                    >
+                        <Text className="text-xs text-white/50">Clear</Text>
+                    </TvFocusablePressable>
+                )}
+            </View>
+
+            {filtersOpen && (
+                <View className="px-4 mb-3 gap-3">
+                    <View>
+                        <Text className="text-[11px] font-medium text-white/40 mb-1.5">Format</Text>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                            <View className="flex-row gap-1.5">
+                                {TV_FORMAT_OPTIONS.map(opt => {
+                                    const active = filterParams.format === opt.value
+                                    return (
+                                        <TvFocusablePressable
+                                            key={String(opt.value)}
+                                            className={cn("px-3 py-1.5 rounded-lg", active ? "bg-white/20" : "bg-white/5")}
+                                            focusedClassName="border-brand-400/80"
+                                            onPress={() => setFilterParams(p => ({ ...p, format: opt.value }))}
+                                        >
+                                            <Text className={cn("text-xs", active ? "text-white font-medium" : "text-white/50")}>
+                                                {opt.label}
+                                            </Text>
+                                        </TvFocusablePressable>
+                                    )
+                                })}
+                            </View>
+                        </ScrollView>
+                    </View>
+
+                    <View>
+                        <Text className="text-[11px] font-medium text-white/40 mb-1.5">Status</Text>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                            <View className="flex-row gap-1.5">
+                                {TV_STATUS_OPTIONS.map(opt => {
+                                    const active = filterParams.status === opt.value
+                                    return (
+                                        <TvFocusablePressable
+                                            key={String(opt.value)}
+                                            className={cn("px-3 py-1.5 rounded-lg", active ? "bg-white/20" : "bg-white/5")}
+                                            focusedClassName="border-brand-400/80"
+                                            onPress={() => setFilterParams(p => ({ ...p, status: opt.value }))}
+                                        >
+                                            <Text className={cn("text-xs", active ? "text-white font-medium" : "text-white/50")}>
+                                                {opt.label}
+                                            </Text>
+                                        </TvFocusablePressable>
+                                    )
+                                })}
+                            </View>
+                        </ScrollView>
+                    </View>
+                </View>
+            )}
+
+            {isLoading ? (
+                <View className="items-center justify-center pt-20">
+                    <ActivityIndicator size="large" color="rgba(255,255,255,0.3)" />
+                </View>
+            ) : (
+                <>
+                    <HorizontalMediaCardList
+                        title="Anime"
+                        type="anime"
+                        media={filteredAnimeItems}
+                        compact
+                        hideCount
+                        onEndReached={undefined}
+                    />
+                    <HorizontalMediaCardList
+                        title="Manga"
+                        type="manga"
+                        media={filteredMangaItems}
+                        compact
+                        hideCount
+                        onEndReached={undefined}
+                    />
+                </>
+            )}
+        </ScrollView>
     )
 }

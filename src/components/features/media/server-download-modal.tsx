@@ -2,6 +2,7 @@ import { Anime_Entry, Anime_Episode, HibikeTorrent_AnimeTorrent } from "@/api/ge
 import { useDebridAddTorrents } from "@/api/hooks/debrid.hooks"
 import { useTorrentClientDownload } from "@/api/hooks/torrent_client.hooks"
 import { useServerStatus } from "@/atoms/server.atoms"
+import { useIsTV } from "@/hooks/use-device"
 import { TorrentStreamPickerSheet } from "@/components/features/torrentstream/torrent-stream-picker-sheet"
 import { useTorrentStreamController } from "@/components/features/torrentstream/use-torrent-stream-controller"
 import { SeaImage } from "@/components/shared/sea-image"
@@ -74,6 +75,7 @@ function getFileSelectionValue(file: any): string {
 }
 
 export function ServerDownloadModal({ entry, open, onOpenChange }: ServerDownloadModalProps) {
+    const isTV = useIsTV()
     const [page, setPage] = useState(0)
     const [destination, setDestination] = useState("")
     const serverStatus = useServerStatus()
@@ -233,6 +235,7 @@ export function ServerDownloadModal({ entry, open, onOpenChange }: ServerDownloa
                                 <Pressable
                                     onPress={() => setPage(Math.max(0, page - 1))}
                                     disabled={page === 0}
+                                    focusable={isTV}
                                     className={cn(
                                         "w-8 h-8 rounded-lg items-center justify-center",
                                         page === 0 ? "opacity-25" : "bg-white/5",
@@ -246,6 +249,7 @@ export function ServerDownloadModal({ entry, open, onOpenChange }: ServerDownloa
                                 <Pressable
                                     onPress={() => setPage(Math.min(totalPages - 1, page + 1))}
                                     disabled={page === totalPages - 1}
+                                    focusable={isTV}
                                     className={cn(
                                         "w-8 h-8 rounded-lg items-center justify-center",
                                         page === totalPages - 1 ? "opacity-25" : "bg-white/5",
@@ -342,6 +346,7 @@ type EpisodeDownloadRowProps = {
 }
 
 function EpisodeDownloadRow({ episode, watchedProgress, onPress }: EpisodeDownloadRowProps) {
+    const isTV = useIsTV()
     const serverStatus = useServerStatus()
     const thumbnailWidth = 80
     const isOnServer = !!episode.localFile?.path
@@ -359,6 +364,7 @@ function EpisodeDownloadRow({ episode, watchedProgress, onPress }: EpisodeDownlo
     return (
         <Pressable
             onPress={onPress}
+            focusable={isTV}
             className="flex-row items-center py-2.5 px-3 rounded-2xl bg-white/[0.03] border border-white/5 mb-2 active:bg-white/10"
         >
             <View

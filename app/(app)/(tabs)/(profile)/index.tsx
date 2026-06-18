@@ -4,6 +4,12 @@ import { websocketAtom } from "@/atoms/websocket.atoms"
 import { ExternalPlayerPickerSheet } from "@/components/features/player/external-player-picker-sheet"
 import { ProfileMenuItem, ProfileMenuSection, ProfileMenuToggle, RowDivider } from "@/components/features/profile/profile-menu"
 import { ProfileTVLayout, TVActionPanel, TVPlayerOptions, type TVSection } from "@/components/features/profile/profile-tv-layout"
+import { ActiveStreamPanel } from "./active-stream"
+import { DownloadSettingsPanel } from "./download-settings"
+import { LogsPanel } from "./logs"
+import { MyListsPanel } from "./my-lists"
+import { ServerDownloadsPanel } from "./server-downloads"
+import { UnmatchedPanel } from "./unmatched"
 import { SafeView } from "@/components/layout/layout-view"
 import { Badge } from "@/components/ui/badge"
 import { Text as UIText } from "@/components/ui/text"
@@ -244,6 +250,7 @@ export default function ProfileScreen() {
                     label: "My Lists",
                     detail: "Browse your anime & manga lists",
                     onPress: () => router.push("/(app)/(tabs)/(profile)/my-lists" as never),
+                    ...(isTV ? { renderRightPanel: ({ leftColumnNode }) => <MyListsPanel nextFocusLeft={leftColumnNode} /> } : {}),
                 },
             ],
         },
@@ -260,6 +267,7 @@ export default function ProfileScreen() {
                     detail: formatActiveStreamDetail(activeStream),
                     accessory: <ActiveStreamBadge status={activeStream.status} />,
                     onPress: () => router.push("/(app)/(tabs)/(profile)/active-stream" as never),
+                    ...(isTV ? { renderRightPanel: ({ leftColumnNode }) => <ActiveStreamPanel nextFocusLeft={leftColumnNode} /> } : {}),
                 },
             ],
         } : { id: "streaming", title: "Streaming", icon: "cloud-outline", show: false, items: [] },
@@ -306,6 +314,7 @@ export default function ProfileScreen() {
                     label: "Download Settings",
                     detail: "Wi-Fi, background, and queue preferences",
                     onPress: () => router.push("/(app)/(tabs)/(profile)/download-settings" as never),
+                    ...(isTV ? { renderRightPanel: ({ leftColumnNode }) => <DownloadSettingsPanel nextFocusLeft={leftColumnNode} /> } : {}),
                 },
             ],
         },
@@ -321,6 +330,7 @@ export default function ProfileScreen() {
                     label: "Server Download Queue",
                     detail: "Monitor active downloads running on the server",
                     onPress: () => router.push("/(app)/(tabs)/(profile)/server-downloads" as never),
+                    ...(isTV ? { renderRightPanel: ({ leftColumnNode }) => <ServerDownloadsPanel nextFocusLeft={leftColumnNode} /> } : {}),
                 },
                 {
                     id: "resolve-unmatched",
@@ -328,6 +338,7 @@ export default function ProfileScreen() {
                     label: "Resolve Unmatched",
                     detail: "Manually match unmatched files/folders to anime entries",
                     onPress: () => router.push("/(app)/(tabs)/(profile)/unmatched" as never),
+                    ...(isTV ? { renderRightPanel: ({ leftColumnNode }) => <UnmatchedPanel nextFocusLeft={leftColumnNode} /> } : {}),
                 },
                 {
                     id: "rescan-library",
@@ -362,7 +373,7 @@ export default function ProfileScreen() {
                     detail: "Purge cached posters, banners, and avatars",
                     ...(!isTV ? { onPress: handleClearImageCachePress } : {}),
                     hideChevron: true,
-                    ...(isTV ? { renderRightPanel: () => <TVActionPanel description="This removes cached posters, banners, and avatars. Images will download again the next time they are shown." actionLabel="Clear cache" onAction={handleTVClearImageCache} isProcessing={isClearingImageCache} /> } : {}),
+                    ...(isTV ? { renderRightPanel: ({ leftColumnNode }) => <TVActionPanel description="This removes cached posters, banners, and avatars. Images will download again the next time they are shown." actionLabel="Clear cache" onAction={handleTVClearImageCache} isProcessing={isClearingImageCache} nextFocusLeft={leftColumnNode} /> } : {}),
                 },
                 {
                     id: "logs",
@@ -370,6 +381,7 @@ export default function ProfileScreen() {
                     label: "Logs",
                     detail: "Crash records and temporary diagnostics",
                     onPress: () => router.push("/(app)/(tabs)/(profile)/logs" as never),
+                    ...(isTV ? { renderRightPanel: ({ leftColumnNode }) => <LogsPanel nextFocusLeft={leftColumnNode} /> } : {}),
                 },
                 {
                     id: "check-new-release",
@@ -395,7 +407,7 @@ export default function ProfileScreen() {
                     label: "Change Server URL",
                     ...(!isTV ? { onPress: handleChangeServerUrlPress } : {}),
                     hideChevron: true,
-                    ...(isTV ? { renderRightPanel: () => <TVActionPanel description="Go to the server URL setup screen." actionLabel="Continue" onAction={handleTVChangeServerUrl} /> } : {}),
+                    ...(isTV ? { renderRightPanel: ({ leftColumnNode }) => <TVActionPanel description="Go to the server URL setup screen." actionLabel="Continue" onAction={handleTVChangeServerUrl} nextFocusLeft={leftColumnNode} /> } : {}),
                 },
             ],
         },
@@ -410,7 +422,7 @@ export default function ProfileScreen() {
                     label: "External Player",
                     detail: externalPlayerLabel,
                     ...(!isTV ? { onPress: () => setPlayerPickerOpen(true) } : {}),
-                    ...(isTV ? { renderRightPanel: () => <TVPlayerOptions /> } : {}),
+                    ...(isTV ? { renderRightPanel: ({ leftColumnNode }) => <TVPlayerOptions nextFocusLeft={leftColumnNode} /> } : {}),
                 },
             ],
         },

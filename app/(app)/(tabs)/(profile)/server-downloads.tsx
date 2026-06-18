@@ -3,8 +3,10 @@ import { useGetActiveTorrentList, useTorrentClientAction } from "@/api/hooks/tor
 import { useServerStatus } from "@/atoms/server.atoms"
 import { ProfileSubpageHeader } from "@/components/features/profile/profile-menu"
 import { SegmentedControl } from "@/components/shared/segmented-control"
+import { TvFocusablePressable } from "@/components/ui/tv-focusable"
 import { useIOSScrollRefreshRateWorkaround } from "@/hooks/use-ios-scroll-refresh-rate-workaround"
 import { useIsServerConnected } from "@/lib/offline"
+import { cn } from "@/lib/utils"
 import { toast } from "@/lib/utils/toast"
 import { Ionicons } from "@expo/vector-icons"
 import * as React from "react"
@@ -335,13 +337,260 @@ function DebridRow({
                     </Pressable>
                 ) : null}
 
-                <Pressable
+                    <Pressable
                     onPress={onDelete}
                     className="flex-row items-center bg-red-500/10 active:bg-red-500/20 px-3 py-1.5 rounded-lg gap-1 border border-red-500/20"
                 >
                     <Ionicons name="trash-outline" size={14} color="rgb(190 110 110)" />
                     <Text className="text-red-400 text-xs font-medium">Delete</Text>
                 </Pressable>
+            </View>
+        </View>
+    )
+}
+
+// ── TV Panel ──────────────────────────────────────────────────────
+
+export function ServerDownloadsPanel({
+    nextFocusLeft,
+}: {
+    nextFocusLeft?: number | null
+}) {
+    const isConnected = useIsServerConnected()
+    const serverStatus = useServerStatus()
+    const [activeTab, setActiveTab] = React.useState<DownloadTab>("torrent")
+
+    const { data: rawTorrents, isLoading: isLoadingTorrents } = useGetActiveTorrentList(
+        isConnected && activeTab === "torrent",
+        "",
+        "",
+    )
+
+    const { data: rawDebridTorrents, isLoading: isLoadingDebrid } = useDebridGetTorrents(
+        isConnected && activeTab === "debrid",
+        3000,
+    )
+
+    const torrents = React.useMemo(() => {
+        return rawTorrents?.filter(t => {
+            const isComplete = t.progress >= 1
+            const isPausedOrStopped = t.status === "paused" || t.status === "stopped"
+            return !(isComplete && isPausedOrStopped)
+        })
+    }, [rawTorrents])
+
+    const debridTorrents = React.useMemo(() => {
+        return rawDebridTorrents?.filter((item: any) => {
+            const isComplete = item.completionPercentage >= 100
+            const isPausedOrStopped = item.status?.toLowerCase() === "paused" || item.status?.toLowerCase() === "stopped"
+            return !(isComplete && isPausedOrStopped)
+        })
+    }, [rawDebridTorrents])
+
+    const { mutate: performTorrentAction } = useTorrentClientAction()
+    const { mutate: downloadDebrid } = useDebridDownloadTorrent()
+    const { mutate: cancelDebridDownload } = useDebridCancelDownload()
+    const { mutate: deleteDebridTorrent } = useDebridDeleteTorrent()
+
+    const handleTorrentAction = React.useCallback((hash: string, action: "pause" | "resume" | "remove") => {
+        performTorrentAction({ hash, action, dir: "" })
+    }, [performTorrentAction])
+
+    const handleDebridDownload = React.useCallback((item: any) => {
+        const libraryPath = serverStatus?.settings?.library?.libraryPath
+        if (!libraryPath) {
+            toast.error("Library path not configured on server settings")
+            return
+        }
+        downloadDebrid({ torrentItem: item, destination: libraryPath })
+    }, [downloadDebrid, serverStatus?.settings?.library?.libraryPath])
+
+    const handleDebridCancel = React.useCallback((item: any) => {
+        cancelDebridDownload({ itemID: item.id })
+    }, [cancelDebridDownload])
+
+    const handleDebridDelete = React.useCallback((item: any) => {
+        deleteDebridTorrent({ torrentItem: item })
+    }, [deleteDebridTorrent])
+
+    if (!isConnected) {
+        return (
+            <View className="items-center justify-center pt-20 px-6 gap-3">
+                <Ionicons name="wifi-outline" size={48} color="rgba(255,255,255,0.25)" />
+                <Text className="text-white text-base font-semibold text-center">Server Offline</Text>
+                <Text className="text-white/40 text-sm text-center">Please connect to the server.</Text>
+            </View>
+        )
+    }
+
+    const isLoading = activeTab === "torrent" ? isLoadingTorrents : isLoadingDebrid
+    const isEmpty = activeTab === "torrent" ? !torrents || torrents.length === 0 : !debridTorrents || debridTorrents.length === 0
+
+    return (
+        <ScrollView className="flex-1 px-4 pt-2">
+            <View className="flex-row mb-4 gap-2">
+                <TvFocusablePressable
+                    className={cn("flex-1 py-2 rounded-lg items-center", activeTab === "torrent" ? "bg-brand-500/20 border border-brand-400/40" : "bg-white/5 border border-white/10")}
+                    focusedClassName="border-brand-400/80"
+                    onPress={() => setActiveTab("torrent")}
+                    nextFocusLeft={nextFocusLeft ?? undefined}
+                >
+                    <Text className={cn("text-sm font-semibold", activeTab === "torrent" ? "text-white" : "text-white/60")}>Torrent</Text>
+                </TvFocusablePressable>
+                <TvFocusablePressable
+                    className={cn("flex-1 py-2 rounded-lg items-center", activeTab === "debrid" ? "bg-brand-500/20 border border-brand-400/40" : "bg-white/5 border border-white/10")}
+                    focusedClassName="border-brand-400/80"
+                    onPress={() => setActiveTab("debrid")}
+                    nextFocusLeft={nextFocusLeft ?? undefined}
+                >
+                    <Text className={cn("text-sm font-semibold", activeTab === "debrid" ? "text-white" : "text-white/60")}>Debrid</Text>
+                </TvFocusablePressable>
+            </View>
+
+            {isLoading ? (
+                <View className="items-center justify-center pt-20">
+                    <ActivityIndicator size="large" color="white" />
+                </View>
+            ) : isEmpty ? (
+                <View className="items-center pt-20 px-6 gap-3">
+                    <Ionicons name="cloud-download-outline" size={48} color="rgba(255,255,255,0.15)" />
+                    <Text className="text-white/40 text-sm font-medium text-center">No active server downloads found</Text>
+                </View>
+            ) : (
+                <>
+                    {activeTab === "torrent" && torrents?.map((torrent) => (
+                        <TVTorrentRow
+                            key={torrent.hash}
+                            torrent={torrent}
+                            onAction={(action) => handleTorrentAction(torrent.hash, action)}
+                            nextFocusLeft={nextFocusLeft}
+                        />
+                    ))}
+
+                    {activeTab === "debrid" && debridTorrents?.map((item) => (
+                        <TVDebridRow
+                            key={item.id}
+                            item={item}
+                            onDownload={() => handleDebridDownload(item)}
+                            onCancel={() => handleDebridCancel(item)}
+                            onDelete={() => handleDebridDelete(item)}
+                            nextFocusLeft={nextFocusLeft}
+                        />
+                    ))}
+                </>
+            )}
+        </ScrollView>
+    )
+}
+
+function TVTorrentRow({
+    torrent,
+    onAction,
+    nextFocusLeft,
+}: {
+    torrent: any
+    onAction: (action: "pause" | "resume" | "remove") => void
+    nextFocusLeft?: number | null
+}) {
+    const progressPercent = Math.round((torrent.progress || 0) * 100)
+    const isPaused = torrent.status === "paused" || torrent.status === "stopped"
+
+    return (
+        <View className="bg-white/[0.03] border border-white/5 rounded-2xl p-4 mb-3">
+            <Text className="text-white font-semibold text-sm" numberOfLines={2}>
+                {torrent.name}
+            </Text>
+
+            <View className="mt-2">
+                <View className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
+                    <View className="h-full bg-brand-500 rounded-full" style={{ width: `${progressPercent}%` }} />
+                </View>
+                <Text className="text-[10px] text-white/60 font-semibold mt-1">{progressPercent}%</Text>
+            </View>
+
+            <View className="flex-row justify-end gap-2 mt-3">
+                <TvFocusablePressable
+                    className="flex-row items-center bg-white/5 px-3 py-1.5 rounded-lg gap-1 border border-white/10"
+                    focusedClassName="border-brand-400/60 bg-white/10"
+                    onPress={() => onAction(isPaused ? "resume" : "pause")}
+                    nextFocusLeft={nextFocusLeft ?? undefined}
+                >
+                    <Ionicons name={isPaused ? "play-outline" : "pause-outline"} size={14} color="white" />
+                    <Text className="text-white text-xs font-medium">{isPaused ? "Resume" : "Pause"}</Text>
+                </TvFocusablePressable>
+                <TvFocusablePressable
+                    className="flex-row items-center bg-red-500/10 px-3 py-1.5 rounded-lg gap-1 border border-red-500/20"
+                    focusedClassName="border-red-400/60 bg-red-500/20"
+                    onPress={() => onAction("remove")}
+                    nextFocusLeft={nextFocusLeft ?? undefined}
+                >
+                    <Ionicons name="trash-outline" size={14} color="rgb(190 110 110)" />
+                    <Text className="text-red-400 text-xs font-medium">Delete</Text>
+                </TvFocusablePressable>
+            </View>
+        </View>
+    )
+}
+
+function TVDebridRow({
+    item,
+    onDownload,
+    onCancel,
+    onDelete,
+    nextFocusLeft,
+}: {
+    item: any
+    onDownload: () => void
+    onCancel: () => void
+    onDelete: () => void
+    nextFocusLeft?: number | null
+}) {
+    const isDownloadingLocally = item.isDownloadingLocally || item.isQueuedForLocalDownload
+
+    return (
+        <View className="bg-white/[0.03] border border-white/5 rounded-2xl p-4 mb-3">
+            <Text className="text-white font-semibold text-sm" numberOfLines={2}>
+                {item.name}
+            </Text>
+
+            <View className="mt-2">
+                <View className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
+                    <View className="h-full bg-brand-300 rounded-full" style={{ width: `${item.completionPercentage}%` }} />
+                </View>
+                <Text className="text-[10px] text-white/60 font-semibold mt-1">{item.completionPercentage}%</Text>
+            </View>
+
+            <View className="flex-row justify-end gap-2 mt-3">
+                {isDownloadingLocally ? (
+                    <TvFocusablePressable
+                        className="flex-row items-center bg-amber-500/10 px-3 py-1.5 rounded-lg gap-1 border border-amber-500/20"
+                        focusedClassName="border-amber-400/60 bg-amber-500/20"
+                        onPress={onCancel}
+                        nextFocusLeft={nextFocusLeft ?? undefined}
+                    >
+                        <Ionicons name="close-circle-outline" size={14} color="rgb(190 155 95)" />
+                        <Text className="text-amber-400 text-xs font-medium">Cancel Local</Text>
+                    </TvFocusablePressable>
+                ) : item.isReady ? (
+                    <TvFocusablePressable
+                        className="flex-row items-center bg-brand-500/10 px-3 py-1.5 rounded-lg gap-1 border border-brand-500/20"
+                        focusedClassName="border-brand-400/60 bg-brand-500/20"
+                        onPress={onDownload}
+                        nextFocusLeft={nextFocusLeft ?? undefined}
+                    >
+                        <Ionicons name="cloud-download-outline" size={14} color="rgb(159 146 255)" />
+                        <Text className="text-brand-400 text-xs font-medium">Download to Server</Text>
+                    </TvFocusablePressable>
+                ) : null}
+                <TvFocusablePressable
+                    className="flex-row items-center bg-red-500/10 px-3 py-1.5 rounded-lg gap-1 border border-red-500/20"
+                    focusedClassName="border-red-400/60 bg-red-500/20"
+                    onPress={onDelete}
+                    nextFocusLeft={nextFocusLeft ?? undefined}
+                >
+                    <Ionicons name="trash-outline" size={14} color="rgb(190 110 110)" />
+                    <Text className="text-red-400 text-xs font-medium">Delete</Text>
+                </TvFocusablePressable>
             </View>
         </View>
     )

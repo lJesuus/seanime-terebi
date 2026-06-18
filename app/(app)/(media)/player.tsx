@@ -877,7 +877,7 @@ function PlayerScreenInner() {
                 <StatusBar hidden />
                 <Text className="text-red-400 text-lg font-semibold mb-2">Playback Error</Text>
                 <Text className="text-white/70 text-center mb-6">{error}</Text>
-                <Pressable onPress={handleBack} className="bg-white/10 px-6 py-3 rounded-xl">
+                <Pressable focusable={isTV} onPress={handleBack} className="bg-white/10 px-6 py-3 rounded-xl">
                     <Text className="text-white font-medium">Go Back</Text>
                 </Pressable>
             </View>
@@ -921,17 +921,48 @@ function PlayerScreenInner() {
                     }}
                     {...(isTV ? {
                         onKeyDown: (e: any) => {
-                            const key = e.nativeEvent.key
-                            if (key === "Select" || key === "Enter" || key === "DPAD_CENTER") {
+                            const key = e.nativeEvent?.key ?? e.nativeEvent?.eventType
+                            if (!key) return
+
+                            if (key === "Select" || key === "Enter" || key === "DPAD_CENTER" || key === "MediaPlayPause") {
                                 if (!controls.controlsVisible) {
                                     controls.showControls()
                                 } else {
                                     player.togglePlayPause()
                                 }
-                            } else if (key === "DPAD_LEFT") {
-                                player.seekRelative(-10)
-                            } else if (key === "DPAD_RIGHT") {
-                                player.seekRelative(10)
+                            } else if (key === "DPAD_LEFT" || key === "Rewind" || key === "SeekBackward") {
+                                if (!controls.controlsVisible) {
+                                    player.seekRelative(-prefs.buttonSeekSec)
+                                }
+                            } else if (key === "DPAD_RIGHT" || key === "FastForward" || key === "SeekForward") {
+                                if (!controls.controlsVisible) {
+                                    player.seekRelative(prefs.buttonSeekSec)
+                                }
+                            } else if (key === "DPAD_UP" || key === "DPAD_DOWN") {
+                                controls.showControls()
+                            } else if (key === "Back" || key === "Escape" || key === "TVBack") {
+                                if (panel) {
+                                    closeSettings()
+                                } else if (controls.controlsLocked) {
+                                    controls.handleUnlockScreen()
+                                } else {
+                                    handleBack()
+                                }
+                            } else if (key === "Menu" || key === "TVMenu") {
+                                if (controls.controlsVisible) {
+                                    setPanel("main")
+                                    controls.clearHideTimer()
+                                }
+                            } else if (key === "MediaTrackNext" || key === "MediaFastForward") {
+                                if (controls.controlsVisible) {
+                                    handleManualNextEpisode()
+                                } else {
+                                    controls.showControls()
+                                }
+                            } else if (key === "MediaTrackPrevious" || key === "MediaRewind") {
+                                if (!controls.controlsVisible) {
+                                    controls.showControls()
+                                }
                             }
                         }
                     } : {})}
@@ -987,8 +1018,20 @@ function PlayerScreenInner() {
                         displayTime={displayTime}
                         isSeeking={isSeeking}
                         seekingChapter={seekingChapter}
+                        currentChapter={getChapterAtTime(chapters, state.currentTime)}
                         onBack={handleBack}
                         onTogglePlayPause={player.togglePlayPause}
+                        onSkipChapter={() => {
+                            const currentCh = getChapterAtTime(chapters, state.currentTime)
+                            if (currentCh) {
+                                const nextChapter = chapters.find(c => c.start > currentCh.start)
+                                if (nextChapter) {
+                                    player.seekTo(nextChapter.start)
+                                } else {
+                                    player.seekTo(state.duration)
+                                }
+                            }
+                        }}
                         scheduleHide={controls.scheduleHide}
                         clearHideTimer={controls.clearHideTimer}
                         setPanel={setPanel}
@@ -1044,6 +1087,7 @@ function PlayerScreenInner() {
                         }}
                     >
                         <Pressable
+                            focusable={isTV}
                             onPress={() => {
                                 const targetTime = showSkipIntro ? skipData.op!.interval.endTime : skipData.ed!.interval.endTime
                                 playerSeekTo(targetTime)

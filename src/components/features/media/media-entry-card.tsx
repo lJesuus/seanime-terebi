@@ -198,7 +198,7 @@ type MediaEntryCardProps<T extends "anime" | "manga"> = {
     hideLibraryBadge?: boolean
 }
 
-export function MediaEntryCard<T extends "anime" | "manga">(props: MediaEntryCardProps<T>) {
+export function MediaEntryCard<T extends "anime" | "manga">(props: MediaEntryCardProps<T> & Record<string, any>) {
 
     const {
         type,
@@ -213,6 +213,7 @@ export function MediaEntryCard<T extends "anime" | "manga">(props: MediaEntryCar
         hideProgress,
         preferFetchedSheetMedia,
         hideLibraryBadge,
+        ...rest
     } = props
 
     const serverStatus = useServerStatus()
@@ -264,6 +265,7 @@ export function MediaEntryCard<T extends "anime" | "manga">(props: MediaEntryCar
     const posterHeight = cardWidth * (cardWidth < 150 ? 1.305 : 1.275)
     const showAnimeLibraryBadge = type === "anime" && !!libraryData && !hideLibraryBadge
     const animeLibraryFileCount = showAnimeLibraryBadge ? libraryData?.mainFileCount : undefined
+    const { onFocus: _onFocus, onBlur: _onBlur, ...pressableRest } = rest as Record<string, any>
 
     return (
         <>
@@ -274,8 +276,9 @@ export function MediaEntryCard<T extends "anime" | "manga">(props: MediaEntryCar
                 onLongPress={onLongPress}
                 delayLongPress={350}
                 focusable={true}
-                onFocus={onFocus}
-                onBlur={onBlur}
+                onFocus={(e) => { onFocus(); _onFocus?.(e) }}
+                onBlur={(e) => { onBlur(); _onBlur?.(e) }}
+                {...pressableRest}
             >
                 <Animated.View
                     className="flex flex-col relative mb-2"

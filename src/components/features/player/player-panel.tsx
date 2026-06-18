@@ -27,7 +27,6 @@ import {
     Mic2,
     Minus,
     Pause,
-    PictureInPicture2,
     Play,
     Plus,
     RotateCw,
@@ -39,8 +38,9 @@ import {
     X,
 } from "lucide-react-native"
 import React from "react"
-import { ActivityIndicator, ScrollView, Text, TextInput, View } from "react-native"
+import { ActivityIndicator, Platform, ScrollView, Text, TextInput, View } from "react-native"
 import { Pressable } from "react-native-gesture-handler"
+import { TvFocusablePressable } from "@/components/ui/tv-focusable"
 import Animated, { SlideInRight, SlideOutRight } from "react-native-reanimated"
 import { AUDIO_DELAY_STEP, BRAND_ACCENT, BUTTON_SEEK_OPTIONS, SPEED_OPTIONS, SUBTITLE_DELAY_STEP, SUBTITLE_FONT_SIZE_OPTIONS } from "./constants"
 import { formatSecondsLabel } from "./helpers"
@@ -113,7 +113,6 @@ export interface PlayerPanelOverlayProps {
     anilistId?: number
     wyzieApiKey: string
     onSaveWyzieApiKey: (value: string) => void
-    onStartPiP?: () => void
     onToggleAutoNext?: () => void
     onToggleCenterTapPlayPause?: () => void
     onToggleSideSwipeControls?: () => void
@@ -144,13 +143,13 @@ export function PlayerPanelOverlay(props: PlayerPanelOverlayProps) {
 
                 <View className="flex-row items-center border-b border-white/5 px-4 pb-3">
                     {backPanel !== null && (
-                        <Pressable
+                        <TvFocusablePressable
                             onPress={() => onNavigate(backPanel)}
                             hitSlop={8}
                             className="mr-2 p-1"
                         >
                             <ChevronLeft size={18} color="rgba(255,255,255,0.55)" />
-                        </Pressable>
+                        </TvFocusablePressable>
                     )}
                     {meta.icon && (
                         <View className="items-center justify-center" style={{ width: 18, height: 18 }}>
@@ -160,13 +159,13 @@ export function PlayerPanelOverlay(props: PlayerPanelOverlayProps) {
                     <Text className="ml-2.5 flex-1 text-sm font-bold text-white">
                         {meta.title}
                     </Text>
-                    <Pressable
+                    <TvFocusablePressable
                         onPress={onClose}
                         hitSlop={8}
                         className="rounded-full bg-white/5 p-1.5"
                     >
                         <X size={14} color="rgba(255,255,255,0.55)" />
-                    </Pressable>
+                    </TvFocusablePressable>
                 </View>
 
                 <ScrollView
@@ -177,7 +176,6 @@ export function PlayerPanelOverlay(props: PlayerPanelOverlayProps) {
                     {panel === "main" && (
                         <MainSettingsContent
                             state={state} prefs={prefs} onNavigate={onNavigate}
-                            onStartPiP={props.onStartPiP}
                             onToggleAutoNext={props.onToggleAutoNext}
                             onToggleCenterTapPlayPause={props.onToggleCenterTapPlayPause}
                             onToggleSideSwipeControls={props.onToggleSideSwipeControls}
@@ -316,20 +314,23 @@ function PanelSelectableRow({
     className?: string
 }) {
     return (
-        <Pressable onPress={onPress} disabled={disabled ?? !onPress}>
-            {({ pressed }) => (
-                <View
-                    className={cn(
-                        PANEL_ROW_CLASS,
-                        borderTop && PANEL_DIVIDER_CLASS,
-                        active ? "bg-player-tint/15" : pressed && onPress ? "bg-white/7" : "bg-transparent",
-                        className,
-                    )}
-                >
-                    {children}
-                </View>
-            )}
-        </Pressable>
+        <TvFocusablePressable
+            onPress={onPress}
+            disabled={disabled ?? !onPress}
+            focusedClassName="rounded-lg bg-white/10"
+            scaleTo={1.01}
+        >
+            <View
+                className={cn(
+                    PANEL_ROW_CLASS,
+                    borderTop && PANEL_DIVIDER_CLASS,
+                    active ? "bg-player-tint/15" : "bg-transparent",
+                    className,
+                )}
+            >
+                {children}
+            </View>
+        </TvFocusablePressable>
     )
 }
 
@@ -338,18 +339,18 @@ function PanelSelectableRow({
 ///////////////////////////////////////////////////////////////////////////////
 
 function MainSettingsContent({
-    state, prefs, onNavigate, onStartPiP, onToggleAutoNext,
-    onToggleCenterTapPlayPause, onToggleSideSwipeControls, onToggleAutoSkipOpEd, onLockScreen,
+    state, prefs, onNavigate,
+    onToggleAutoNext, onToggleCenterTapPlayPause, onToggleSideSwipeControls, onToggleAutoSkipOpEd, onLockScreen,
 }: {
     state: PlayerStateType; prefs: PlayerPreferences; onNavigate: (p: PlayerPanel) => void
-    onStartPiP?: () => void; onToggleAutoNext?: () => void
+    onToggleAutoNext?: () => void
     onToggleCenterTapPlayPause?: () => void; onToggleSideSwipeControls?: () => void
     onToggleAutoSkipOpEd?: () => void
     onLockScreen?: () => void
 }) {
     const rows: Array<{
         label: string; value: string; panel: PlayerPanel; icon: React.ReactNode
-        accent?: string; action?: "pip" | "lock" | "toggle-auto-next" | "toggle-center-tap" | "toggle-side-swipe" | "toggle-auto-skip-op-ed"
+        accent?: string; action?: "lock" | "toggle-auto-next" | "toggle-center-tap" | "toggle-side-swipe" | "toggle-auto-skip-op-ed"
     }> = [
         {
             label: "Playback Speed",
@@ -404,13 +405,6 @@ function MainSettingsContent({
             action: "toggle-side-swipe",
         },
         {
-            label: "Picture-in-Picture",
-            value: "",
-            panel: "main",
-            icon: <PictureInPicture2 size={15} color="rgba(255,255,255,0.6)" />,
-            action: "pip",
-        },
-        {
             label: "Screen Lock",
             value: "",
             panel: "main",
@@ -423,7 +417,7 @@ function MainSettingsContent({
         <View>
             <SettingsCard
                 rows={rows} onNavigate={onNavigate}
-                onStartPiP={onStartPiP} onToggleAutoNext={onToggleAutoNext}
+                onToggleAutoNext={onToggleAutoNext}
                 onToggleCenterTapPlayPause={onToggleCenterTapPlayPause}
                 onToggleSideSwipeControls={onToggleSideSwipeControls}
                 onToggleAutoSkipOpEd={onToggleAutoSkipOpEd}
@@ -589,21 +583,18 @@ function DelayContent({ label, current, step, onChange, onReset }: {
             </View>
             <View className="flex-row items-center gap-3.5">
                 <StepperButton onPress={() => onChange(-step)} icon={<Minus size={18} color="#fff" />} />
-                <Pressable onPress={onReset}>
-                    {({ pressed }) => (
-                        <View
-                            className={cn(
-                                "rounded-xl border px-5 py-2.5",
-                                current !== 0 ? "border-red-500/20 bg-red-500/10" : "border-white/10 bg-white/5",
-                                pressed && "opacity-70",
-                            )}
-                        >
-                            <Text className={cn("text-sm font-semibold", current !== 0 ? "text-red-400" : "text-white/25")}>
-                                Reset
-                            </Text>
-                        </View>
-                    )}
-                </Pressable>
+                <TvFocusablePressable onPress={onReset} focusedClassName="border-brand-400/60 bg-white/10" scaleTo={1.05}>
+                    <View
+                        className={cn(
+                            "rounded-xl border px-5 py-2.5",
+                            current !== 0 ? "border-red-500/20 bg-red-500/10" : "border-white/10 bg-white/5",
+                        )}
+                    >
+                        <Text className={cn("text-sm font-semibold", current !== 0 ? "text-red-400" : "text-white/25")}>
+                            Reset
+                        </Text>
+                    </View>
+                </TvFocusablePressable>
                 <StepperButton onPress={() => onChange(step)} icon={<Plus size={18} color="#fff" />} />
             </View>
             <Text className="max-w-56 text-center text-xs leading-4 text-white/20">
@@ -846,6 +837,7 @@ function ExternalSubtitleSearchContent({
                             <Button
                                 size="sm"
                                 variant="secondary"
+                                focusable={Platform.isTV}
                                 onPress={() => {
                                     onSaveWyzieApiKey(apiKeyDraft.trim())
                                     setShowApiKeyInput(false)
@@ -859,6 +851,7 @@ function ExternalSubtitleSearchContent({
                     <Button
                         size="sm"
                         variant="secondary"
+                        focusable={Platform.isTV}
                         onPress={() => setShowApiKeyInput(true)}
                     >
                         <Text className="text-foreground">Change Key</Text>
@@ -1020,22 +1013,20 @@ function FilterRow({ label, children }: { label: string; children: React.ReactNo
 
 function FilterChip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
     return (
-        <Pressable onPress={onPress}>
-            {({ pressed }) => (
-                <View
-                    className={cn(
-                        "rounded-lg border px-2.5 py-1.5",
-                        active
-                            ? "border-player-tint/25 bg-player-tint/15"
-                            : pressed ? "border-white/10 bg-white/7" : "border-white/5 bg-white/5",
-                    )}
-                >
-                    <Text className={cn("text-xs text-white/50", active && "font-semibold text-player-text")}>
-                        {label}
-                    </Text>
-                </View>
-            )}
-        </Pressable>
+        <TvFocusablePressable onPress={onPress} focusedClassName="border-brand-400/60 bg-white/10" scaleTo={1.05}>
+            <View
+                className={cn(
+                    "rounded-lg border px-2.5 py-1.5",
+                    active
+                        ? "border-player-tint/25 bg-player-tint/15"
+                        : "border-white/5 bg-white/5",
+                )}
+            >
+                <Text className={cn("text-xs text-white/50", active && "font-semibold text-player-text")}>
+                    {label}
+                </Text>
+            </View>
+        </TvFocusablePressable>
     )
 }
 
@@ -1060,13 +1051,11 @@ function LanguagePrefContent({ label, current, onSave }: {
                     className={PANEL_INPUT_CLASS}
                 />
             </View>
-            <Pressable onPress={() => onSave(value)}>
-                {({ pressed }) => (
-                    <View className={cn("items-center rounded-xl border border-player-tint/25 bg-player-tint/15 py-3", pressed && "opacity-70")}>
-                        <Text className="text-sm font-semibold text-player-text">Save</Text>
-                    </View>
-                )}
-            </Pressable>
+            <TvFocusablePressable onPress={() => onSave(value)} focusedClassName="border-brand-400/60 bg-white/10" scaleTo={1.02}>
+                <View className="items-center rounded-xl border border-player-tint/25 bg-player-tint/15 py-3">
+                    <Text className="text-sm font-semibold text-player-text">Save</Text>
+                </View>
+            </TvFocusablePressable>
             <View className="rounded-lg border border-white/5 bg-white/[0.02] p-3">
                 <Text className="text-xs leading-4 text-white/30">
                     {"Examples:\n\u2022 Japanese audio: jpn, jp, ja, japanese\n\u2022 English subs: eng, en, english\n\u2022 Multi: jpn, eng, kor"}
@@ -1120,13 +1109,11 @@ function SubtitleLanguagePrefContent({
                     Avoid tracks containing these labels (comma-separated).
                 </Text>
             </View>
-            <Pressable onPress={() => onSave(prefVal, ignoredVal)}>
-                {({ pressed }) => (
-                    <View className={cn("items-center rounded-xl border border-player-tint/25 bg-player-tint/15 py-3", pressed && "opacity-70")}>
-                        <Text className="text-sm font-semibold text-player-text">Save</Text>
-                    </View>
-                )}
-            </Pressable>
+            <TvFocusablePressable onPress={() => onSave(prefVal, ignoredVal)} focusedClassName="border-brand-400/60 bg-white/10" scaleTo={1.02}>
+                <View className="items-center rounded-xl border border-player-tint/25 bg-player-tint/15 py-3">
+                    <Text className="text-sm font-semibold text-player-text">Save</Text>
+                </View>
+            </TvFocusablePressable>
             <View className="rounded-lg border border-white/5 bg-white/[0.02] p-3">
                 <Text className="text-xs leading-4 text-white/30">
                     {"Examples:\n\u2022 Preferred: eng, en, english\n\u2022 Ignored: signs & songs, signs, songs, sign, song"}
@@ -1166,14 +1153,19 @@ function EpisodesListContent({
             {episodes.map((ep) => {
                 const isCurrent = ep.episodeNumber === currentEpisodeNumber
                 return (
-                    <Pressable key={ep.episodeNumber} onPress={() => { if (!isCurrent) onSelect(ep) }} disabled={isCurrent}>
-                        {({ pressed }) => (
-                            <View
-                                className={cn(
-                                    "flex-row items-center gap-2.5 rounded-lg px-2 py-2.5",
-                                    isCurrent ? "border border-player-tint/25 bg-player-tint/15" : pressed ? "bg-white/5" : "bg-transparent",
-                                )}
-                            >
+                    <TvFocusablePressable
+                        key={ep.episodeNumber}
+                        onPress={() => { if (!isCurrent) onSelect(ep) }}
+                        disabled={isCurrent}
+                        focusedClassName="rounded-lg bg-white/10"
+                        scaleTo={1.01}
+                    >
+                        <View
+                            className={cn(
+                                "flex-row items-center gap-2.5 rounded-lg px-2 py-2.5",
+                                isCurrent ? "border border-player-tint/25 bg-player-tint/15" : "bg-transparent",
+                            )}
+                        >
                                 <Text className={cn("w-8 text-center text-sm font-bold", isCurrent ? "text-player-text" : "text-white/35")}>
                                     {ep.episodeNumber}
                                 </Text>
@@ -1192,8 +1184,7 @@ function EpisodesListContent({
                                     {isCurrent && <Play size={11} color={BRAND_ACCENT} fill={BRAND_ACCENT} />}
                                 </View>
                             </View>
-                        )}
-                    </Pressable>
+                        </TvFocusablePressable>
                 )
             })}
         </View>
@@ -1209,15 +1200,15 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 }
 
 function SettingsCard({
-    rows, onNavigate, onStartPiP, onToggleAutoNext,
-    onToggleCenterTapPlayPause, onToggleSideSwipeControls, onToggleAutoSkipOpEd, onLockScreen,
+    rows, onNavigate,
+    onToggleAutoNext, onToggleCenterTapPlayPause, onToggleSideSwipeControls, onToggleAutoSkipOpEd, onLockScreen,
 }: {
     rows: Array<{
         label: string; value: string; panel: PlayerPanel; icon: React.ReactNode
-        accent?: string; action?: "pip" | "lock" | "toggle-auto-next" | "toggle-center-tap" | "toggle-side-swipe" | "toggle-auto-skip-op-ed"
+        accent?: string; action?: "lock" | "toggle-auto-next" | "toggle-center-tap" | "toggle-side-swipe" | "toggle-auto-skip-op-ed"
     }>
     onNavigate: (p: PlayerPanel) => void
-    onStartPiP?: () => void; onToggleAutoNext?: () => void
+    onToggleAutoNext?: () => void
     onToggleCenterTapPlayPause?: () => void; onToggleSideSwipeControls?: () => void
     onToggleAutoSkipOpEd?: () => void
     onLockScreen?: () => void
@@ -1229,8 +1220,7 @@ function SettingsCard({
                     key={`${row.panel}-${row.label}`}
                     borderTop={idx > 0}
                     onPress={() => {
-                        if (row.action === "pip" && onStartPiP) onStartPiP()
-                        else if (row.action === "toggle-auto-next" && onToggleAutoNext) onToggleAutoNext()
+                        if (row.action === "toggle-auto-next" && onToggleAutoNext) onToggleAutoNext()
                         else if (row.action === "toggle-center-tap" && onToggleCenterTapPlayPause) onToggleCenterTapPlayPause()
                         else if (row.action === "toggle-side-swipe" && onToggleSideSwipeControls) onToggleSideSwipeControls()
                         else if (row.action === "toggle-auto-skip-op-ed" && onToggleAutoSkipOpEd) onToggleAutoSkipOpEd()
@@ -1256,15 +1246,10 @@ function SettingsCard({
 
 function StepperButton({ onPress, icon }: { onPress: () => void; icon: React.ReactNode }) {
     return (
-        <Pressable onPress={onPress}>
-            {({ pressed }) => (
-                <View
-                    className={cn("size-12 items-center justify-center rounded-full border border-white/10",
-                        pressed ? "bg-white/12" : "bg-white/5")}
-                >
-                    {icon}
-                </View>
-            )}
-        </Pressable>
+        <TvFocusablePressable onPress={onPress} focusedClassName="border-brand-400/60 bg-white/10" scaleTo={1.1}>
+            <View className="size-12 items-center justify-center rounded-full border border-white/10 bg-white/5">
+                {icon}
+            </View>
+        </TvFocusablePressable>
     )
 }

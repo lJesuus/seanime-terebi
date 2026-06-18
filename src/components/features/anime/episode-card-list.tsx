@@ -113,6 +113,7 @@ export function EpisodeCardList(props: EpisodeCardListProps) {
                 <FlatList
                     data={episodes}
                     horizontal
+                    focusable={false}
                     showsHorizontalScrollIndicator={false}
                     keyExtractor={keyExtractor}
                     renderItem={renderEpisodeCard}

@@ -22,10 +22,9 @@ import { useIsFocused } from "@react-navigation/native"
 import { router, useLocalSearchParams } from "expo-router"
 import * as React from "react"
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { InteractionManager, RefreshControl, Text, TouchableOpacity, View } from "react-native"
+import { InteractionManager, RefreshControl, ScrollView, Text, TouchableOpacity, View } from "react-native"
 import Animated, { FadeIn, useSharedValue } from "react-native-reanimated"
 import Reanimated, { useAnimatedScrollHandler } from "react-native-reanimated"
-import { useSafeAreaInsets } from "react-native-safe-area-context"
 
 
 type MangaEntryScreenProps = {
@@ -46,31 +45,26 @@ export function MangaEntryScreen({ initialView = "chapters" }: MangaEntryScreenP
         saveMangaDownloadEntrySnapshot(remoteEntry)
     }, [remoteEntry])
     const isFocused = useIsFocused()
-    const insets = useSafeAreaInsets()
     const connectionState = useServerConnectionState()
     const isConnected = useIsServerConnected()
     const isOffline = connectionState === "disconnected"
     const [currentView, setCurrentView] = useState<MangaEntryView>(initialView)
     const [isPrimaryBodyReady, setIsPrimaryBodyReady] = useState(false)
     const chaptersScrollY = useSharedValue(0)
-    const infoScrollY = useSharedValue(0)
     const downloadedScrollY = useSharedValue(0)
     const [mountedViews, setMountedViews] = React.useState<Record<MangaEntryView, boolean>>({
         chapters: initialView === "chapters",
-        info: initialView === "info",
         downloaded: initialView === "downloaded",
     })
     const activeScrollY = useMemo(() => {
         switch (currentView) {
-            case "info":
-                return infoScrollY
             case "downloaded":
                 return downloadedScrollY
             case "chapters":
             default:
                 return chaptersScrollY
         }
-    }, [chaptersScrollY, currentView, downloadedScrollY, infoScrollY])
+    }, [chaptersScrollY, currentView, downloadedScrollY])
 
     const [selectedChapterIds, setSelectedChapterIds] = useState<Set<string>>(new Set())
     const selectionMode = selectedChapterIds.size > 0
@@ -118,7 +112,6 @@ export function MangaEntryScreen({ initialView = "chapters" }: MangaEntryScreenP
 
         setMountedViews({
             chapters: currentView === "chapters",
-            info: currentView === "info",
             downloaded: currentView === "downloaded",
         })
     }, [currentView, isFocused])
@@ -177,16 +170,26 @@ export function MangaEntryScreen({ initialView = "chapters" }: MangaEntryScreenP
                                 contentContainerStyle={{ paddingBottom: 110 }}
                                 nestedScrollEnabled
                             >
-                                <MediaEntryHeaderContent entry={entry} type="manga" onTitlePress={() => setCurrentView("info")} />
+                                <MediaEntryHeaderContent entry={entry} type="manga" />
+                                <MangaEntryViewSwitcher
+                                    currentView={currentView}
+                                    onViewChange={setCurrentView}
+                                    isOffline={isOffline}
+                                />
                                 <OfflineBanner />
                                 {isPrimaryBodyReady ? (
-                                    <MangaEntryPrimaryContent
-                                        mediaId={id ?? String(entry.mediaId)}
-                                        entry={entry}
-                                        selectedChapterIds={selectedChapterIds}
-                                        selectionMode={selectionMode}
-                                        onToggleChapter={toggleChapter}
-                                    />
+                                    <>
+                                        <MangaEntryPrimaryContent
+                                            mediaId={id ?? String(entry.mediaId)}
+                                            entry={entry}
+                                            selectedChapterIds={selectedChapterIds}
+                                            selectionMode={selectionMode}
+                                            onToggleChapter={toggleChapter}
+                                        />
+                                        <View className="px-4 pt-6 pb-8">
+                                            <MangaEntryInfoView mediaId={entry.media.id} fallbackDescription={entry.media.description} />
+                                        </View>
+                                    </>
                                 ) : (
                                     <View className="py-10">
                                         <CenteredSpinner />
@@ -194,22 +197,6 @@ export function MangaEntryScreen({ initialView = "chapters" }: MangaEntryScreenP
                                 )}
                             </Reanimated.ScrollView>
                         </View>
-                    </View>
-                )}
-
-                {mountedViews.info && (
-                    <View style={{ flex: currentView === "info" ? 1 : 0, display: currentView === "info" ? "flex" : "none" }}>
-                        <MediaEntryScrollShell
-                            entry={entry}
-                            type="manga"
-                            contentContainerStyle={{ paddingBottom: 180 }}
-                            scrollY={infoScrollY}
-                            showHeaderBackground={false}
-                            onTitlePress={() => setCurrentView("info")}
-                        >
-                            <OfflineBanner />
-                            <MangaEntryInfoView mediaId={entry.media.id} fallbackDescription={entry.media.description} />
-                        </MediaEntryScrollShell>
                     </View>
                 )}
 
@@ -221,20 +208,19 @@ export function MangaEntryScreen({ initialView = "chapters" }: MangaEntryScreenP
                             contentContainerStyle={{ paddingBottom: 180 }}
                             scrollY={downloadedScrollY}
                             showHeaderBackground={false}
-                            onTitlePress={() => setCurrentView("info")}
+                            mediaId={entry.media.id}
+                            fallbackDescription={entry.media.description}
                         >
+                            <MangaEntryViewSwitcher
+                                currentView={currentView}
+                                onViewChange={setCurrentView}
+                                isOffline={isOffline}
+                            />
                             <MangaEntryDownloadedView media={entry.media} />
                         </MediaEntryScrollShell>
                     </View>
                 )}
             </View>
-
-            <MangaEntryViewSwitcher
-                currentView={currentView}
-                onViewChange={setCurrentView}
-                bottomInset={insets.bottom}
-                isOffline={isOffline}
-            />
         </Animated.View>
     )
 }

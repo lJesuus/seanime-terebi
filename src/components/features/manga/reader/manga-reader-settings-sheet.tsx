@@ -114,6 +114,38 @@ export function MangaReaderSettingsSheet({
                                 />
                             </>
                         )}
+                        <RowDivider />
+                        <ToggleRow
+                            title="Fit to Width"
+                            value={settings.fitToWidth}
+                            onValueChange={(value) => onSettingChange("fitToWidth", value)}
+                        />
+                    </Surface>
+                </SettingsSection>
+
+                <SettingsSection title="Image">
+                    <Surface className="overflow-hidden">
+                        <SliderRow
+                            title="Zoom Level"
+                            description="Set the default zoom level for pages."
+                            value={settings.zoomLevel}
+                            min={1}
+                            max={4}
+                            step={0.5}
+                            formatValue={(value) => `${value}x`}
+                            onChange={(value) => onSettingChange("zoomLevel", value)}
+                        />
+                        <RowDivider />
+                        <SliderRow
+                            title="Brightness"
+                            description="Adjust the screen brightness for reading."
+                            value={settings.brightness}
+                            min={0.1}
+                            max={1}
+                            step={0.1}
+                            formatValue={(value) => `${Math.round(value * 100)}%`}
+                            onChange={(value) => onSettingChange("brightness", value)}
+                        />
                     </Surface>
                 </SettingsSection>
 

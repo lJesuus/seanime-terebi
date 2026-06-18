@@ -2,7 +2,9 @@ import { Anime_Entry, Manga_Entry } from "@/api/generated/types"
 import { useServerStatus } from "@/atoms/server.atoms"
 import { SeaImage } from "@/components/shared/sea-image"
 import { Button } from "@/components/ui/button"
+import { TvFocusablePressable } from "@/components/ui/tv-focusable"
 import { COLORS } from "@/constants/colors"
+import { useIsTV } from "@/hooks/use-device"
 import { Ionicons } from "@expo/vector-icons"
 import { LinearGradient } from "expo-linear-gradient"
 import { router } from "expo-router"
@@ -13,6 +15,17 @@ import Animated, { SharedValue, useAnimatedStyle, useSharedValue } from "react-n
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { EditAnilistEntry } from "./edit-anilist-entry"
 import { MediaEntryAudienceScore, MediaEntryScore } from "./media-entry-score"
+
+function stripHtml(value?: string) {
+    if (!value) return ""
+    return value
+        .replace(/<br\s*\/?>/gi, "\n")
+        .replace(/<[^>]*>/g, "")
+        .replace(/&quot;/g, "\"")
+        .replace(/&#039;/g, "'")
+        .replace(/&amp;/g, "&")
+        .trim()
+}
 
 const COVER_WIDTH = 140
 const COVER_HEIGHT = COVER_WIDTH * 1.5
@@ -193,17 +206,29 @@ function MediaEntryHeaderBackgroundInner({ entry, scrollY }: MediaEntryHeaderBac
 export const MediaEntryHeaderBackground = React.memo(MediaEntryHeaderBackgroundInner)
 
 function MediaEntryCloseButtonInner() {
+    const isTV = useIsTV()
     const insets = useSafeAreaInsets()
     return (
         <View style={{ position: "absolute", top: insets.top + 6, left: 14, zIndex: 20 }}>
-            <Button
-                variant="secondary"
-                size="icon"
-                className="rounded-full bg-black/50"
-                onPress={() => router.back()}
-            >
-                <Ionicons name="chevron-back" size={18} color="white" />
-            </Button>
+            {isTV ? (
+                <TvFocusablePressable
+                    hasTVPreferredFocus
+                    onPress={() => router.back()}
+                    className="w-10 h-10 rounded-full bg-black/50 items-center justify-center"
+                    focusedClassName="border border-brand-400/60"
+                >
+                    <Ionicons name="chevron-back" size={18} color="white" />
+                </TvFocusablePressable>
+            ) : (
+                <Button
+                    variant="secondary"
+                    size="icon"
+                    className="rounded-full bg-black/50"
+                    onPress={() => router.back()}
+                >
+                    <Ionicons name="chevron-back" size={18} color="white" />
+                </Button>
+            )}
         </View>
     )
 }
@@ -214,6 +239,7 @@ type MediaEntryHeaderContentProps = {
     entry: Anime_Entry | Manga_Entry
     type: "anime" | "manga"
     onTitlePress?: () => void
+    nextFocusDown?: number | null
 }
 
 const ANIME_LIST_STATUS_LABELS: Record<string, string> = {
@@ -230,7 +256,8 @@ const MANGA_LIST_STATUS_LABELS: Record<string, string> = {
     "CURRENT": "Reading",
 }
 
-function MediaEntryHeaderContentInner({ entry, type, onTitlePress }: MediaEntryHeaderContentProps) {
+function MediaEntryHeaderContentInner({ entry, type, onTitlePress, nextFocusDown }: MediaEntryHeaderContentProps) {
+    const isTV = useIsTV()
     const serverStatus = useServerStatus()
     const coverImageUri = entry?.media?.coverImage?.large || entry?.media?.coverImage?.extraLarge
 
@@ -279,14 +306,12 @@ function MediaEntryHeaderContentInner({ entry, type, onTitlePress }: MediaEntryH
                 </View>
 
                 <View className="flex-1 gap-1.5 pb-1">
-                    <Pressable onPress={onTitlePress} disabled={!onTitlePress} className="active:opacity-75">
-                        <Text
-                            className="text-2xl font-bold leading-6 text-white"
-                            numberOfLines={3}
-                        >
-                            {entry?.media?.title?.userPreferred}
-                        </Text>
-                    </Pressable>
+                    <Text
+                        className="text-2xl font-bold leading-6 text-white"
+                        numberOfLines={3}
+                    >
+                        {entry?.media?.title?.userPreferred}
+                    </Text>
                     {!!alternativeTitle && (
                         <Text className="text-sm leading-tight text-white/40" numberOfLines={2}>
                             {alternativeTitle}
@@ -316,6 +341,14 @@ function MediaEntryHeaderContentInner({ entry, type, onTitlePress }: MediaEntryH
                                     </Text>
                                 </View>
                             ))}
+                        </View>
+                    )}
+
+                    {!!entry?.media?.description && (
+                        <View className="mt-1">
+                            <Text className="text-sm leading-5 text-white/60" numberOfLines={3}>
+                                {stripHtml(entry.media.description)}
+                            </Text>
                         </View>
                     )}
 

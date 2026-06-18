@@ -1,4 +1,5 @@
 import { HibikeManga_ChapterDetails, Manga_Entry } from "@/api/generated/types"
+import { useIsTV } from "@/hooks/use-device"
 import { SeaBottomSheet } from "@/components/ui/bottom-sheet"
 import { Button } from "@/components/ui/button"
 import { type MangaDownloadStatus, useDownloadedMangaChapters, useStartMangaChapterDownload } from "@/lib/downloads"
@@ -28,6 +29,7 @@ export function DownloadMangaChaptersModal({
     open,
     onOpenChange,
 }: DownloadMangaChaptersModalProps) {
+    const isTV = useIsTV()
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
     const [page, setPage] = useState(0)
     const startDownload = useStartMangaChapterDownload(entry, provider)
@@ -168,24 +170,28 @@ export function DownloadMangaChaptersModal({
                 <View className="flex-row flex-wrap gap-2 px-1 pb-3">
                     <Pressable
                         onPress={selectUnread}
+                        focusable={isTV}
                         className="rounded-lg px-3 py-1.5 bg-white/5 border border-white/10"
                     >
                         <Text className="text-xs text-white/70">Select Unread</Text>
                     </Pressable>
                     <Pressable
                         onPress={selectAll}
+                        focusable={isTV}
                         className="rounded-lg px-3 py-1.5 bg-white/5 border border-white/10"
                     >
                         <Text className="text-xs text-white/70">Select All</Text>
                     </Pressable>
                     <Pressable
                         onPress={() => setShowRead(prev => !prev)}
+                        focusable={isTV}
                         className="rounded-lg px-3 py-1.5 bg-white/5 border border-white/10"
                     >
                         <Text className="text-xs text-white/70">{showRead ? "Hide Read" : "Show Read"}</Text>
                     </Pressable>
                     <Pressable
                         onPress={deselectAll}
+                        focusable={isTV}
                         className="rounded-lg px-3 py-1.5 bg-white/5 border border-white/10"
                     >
                         <Text className="text-xs text-white/70">Clear</Text>
@@ -207,6 +213,7 @@ export function DownloadMangaChaptersModal({
                             <Pressable
                                 onPress={() => setPage(Math.max(0, page - 1))}
                                 disabled={page === 0}
+                                focusable={isTV}
                                 className={cn(
                                     "w-8 h-8 rounded-lg items-center justify-center",
                                     page === 0 ? "opacity-25" : "bg-white/5",
@@ -220,6 +227,7 @@ export function DownloadMangaChaptersModal({
                             <Pressable
                                 onPress={() => setPage(Math.min(totalPages - 1, page + 1))}
                                 disabled={page === totalPages - 1}
+                                focusable={isTV}
                                 className={cn(
                                     "w-8 h-8 rounded-lg items-center justify-center",
                                     page === totalPages - 1 ? "opacity-25" : "bg-white/5",
@@ -246,6 +254,7 @@ export function DownloadMangaChaptersModal({
                                 <Pressable
                                     key={chapter.id}
                                     onPress={isUnavailable ? undefined : () => toggleChapter(chapter.id)}
+                                    focusable={isTV}
                                     className="flex-row items-center py-2.5 px-1 rounded-xl"
                                     style={[
                                         selected && !isUnavailable && { backgroundColor: "rgba(255,255,255,0.06)" },

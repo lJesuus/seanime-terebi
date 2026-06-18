@@ -22,7 +22,7 @@ import Animated, {
 } from "react-native-reanimated"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 
-export const HERO_HEIGHT = Platform.isTV ? 540 : 320
+export const HERO_HEIGHT = Platform.isTV ? 480 : 320
 const HERO_TITLE_FONT_SIZE = Platform.isTV ? 44 : 26
 const HERO_GENRE_FONT_SIZE = Platform.isTV ? 16 : 10
 const AUTO_ROTATE_INTERVAL = 10000
@@ -65,6 +65,8 @@ export type DiscoverHeroCarouselController = {
     handleDotPress: (index: number) => void
     handleScrollBeginDrag: () => void
     handleScrollEnd: (event: NativeSyntheticEvent<NativeScrollEvent>) => void
+    notifyFocusEnter: () => void
+    notifyFocusExit: () => void
 }
 
 type DiscoverHeroCarouselBackdropProps = {
@@ -79,6 +81,7 @@ type DiscoverHeroCarouselInteractionLayerProps = {
     media: DiscoverHeroItem[]
     type: "anime" | "manga"
     controller: DiscoverHeroCarouselController
+    onCarouselFocus?: () => void
 }
 
 export function useDiscoverHeroItems(media: DiscoverHeroItem[]) {
@@ -96,6 +99,7 @@ export function useDiscoverHeroCarouselController(media: DiscoverHeroItem[], isA
     const scrollRef = React.useRef<ScrollView | null>(null)
     const scrollX = useSharedValue(0)
     const isInteracting = React.useRef(false)
+    const carouselFocusedRef = React.useRef(false)
     const mediaKey = React.useMemo(() => media.map(item => String(item.id)).join(":"), [media])
 
     const scrollToIndex = React.useCallback(
@@ -104,9 +108,7 @@ export function useDiscoverHeroCarouselController(media: DiscoverHeroItem[], isA
 
             const safeIndex = Math.max(0, Math.min(index, media.length - 1))
             scrollRef.current?.scrollTo({ x: safeIndex * carouselWidth, animated })
-            if (!animated) {
-                scrollX.set(safeIndex * carouselWidth)
-            }
+            scrollX.set(safeIndex * carouselWidth)
             setCurrentIndex(safeIndex)
         },
         [media.length, carouselWidth, scrollX],
@@ -122,11 +124,19 @@ export function useDiscoverHeroCarouselController(media: DiscoverHeroItem[], isA
         scrollToIndex(0, false)
     }, [mediaKey, media.length, scrollToIndex, scrollX])
 
+    const notifyFocusEnter = React.useCallback(() => {
+        carouselFocusedRef.current = true
+    }, [])
+
+    const notifyFocusExit = React.useCallback(() => {
+        carouselFocusedRef.current = false
+    }, [])
+
     React.useEffect(() => {
         if (!isActive || media.length <= 1) return
 
         const interval = setInterval(() => {
-            if (isInteracting.current) return
+            if (isInteracting.current || carouselFocusedRef.current) return
 
             scrollToIndex((currentIndex + 1) % media.length)
         }, AUTO_ROTATE_INTERVAL)
@@ -173,6 +183,8 @@ export function useDiscoverHeroCarouselController(media: DiscoverHeroItem[], isA
         handleDotPress,
         handleScrollBeginDrag,
         handleScrollEnd,
+        notifyFocusEnter,
+        notifyFocusExit,
     }
 }
 
@@ -377,12 +389,14 @@ function DiscoverHeroDot({
     isActive,
     isTV,
     onFocus,
+    onBlur,
     onPress,
 }: {
     index: number
     isActive: boolean
     isTV: boolean
     onFocus: () => void
+    onBlur?: () => void
     onPress: () => void
 }) {
     const [isFocused, setIsFocused] = React.useState(false)
@@ -404,7 +418,10 @@ function DiscoverHeroDot({
                 setIsFocused(true)
                 onFocus()
             }}
-            onBlur={() => setIsFocused(false)}
+            onBlur={() => {
+                setIsFocused(false)
+                onBlur?.()
+            }}
             onPress={onPress}
             hitSlop={isTV ? 16 : 10}
         >
@@ -432,17 +449,56 @@ function DiscoverHeroItem({
     type,
     width,
     height,
+    index,
+    onFocus: onFocusProp,
+    onBlur: onBlurProp,
 }: {
     item: DiscoverHeroItem
     type: "anime" | "manga"
     width: number
     height: number
     index: number
+    onFocus?: () => void
+    onBlur?: () => void
 }) {
+    const isTV = useIsTV()
+    const serverStatus = useServerStatus()
+    const [isFocused, setIsFocused] = React.useState(false)
+    const scale = useSharedValue(1)
+
+    React.useEffect(() => {
+        scale.set(withTiming(isFocused ? 1.03 : 1, { duration: 200 }))
+    }, [isFocused, scale])
+
+    const animatedStyle = useAnimatedStyle(() => ({
+        transform: [{ scale: scale.value }],
+    }))
+
+    const title = item.title?.userPreferred || item.title?.english || item.title?.romaji || ""
+    const genres = item.genres?.slice(0, 3) ?? []
+    const score = item.meanScore
+    const hideAudienceScore = serverStatus?.settings?.anilist?.hideAudienceScore ?? false
+    const description = React.useMemo(() => {
+        const raw = item.description
+        if (!raw) return ""
+        const stripped = stripHtml(raw)
+        const maxLen = isTV ? 120 : 90
+        return stripped.length > maxLen ? stripped.slice(0, maxLen) + "…" : stripped
+    }, [item.description, isTV])
+
     return (
         <View style={{ width, height }}>
             <Pressable
                 style={{ flex: 1 }}
+                focusable={isTV}
+                onFocus={() => {
+                    setIsFocused(true)
+                    onFocusProp?.()
+                }}
+                onBlur={() => {
+                    setIsFocused(false)
+                    onBlurProp?.()
+                }}
                 onPress={() => {
                     if (type === "anime") {
                         router.push(`/(app)/entry/anime/${item.id}`)
@@ -450,27 +506,122 @@ function DiscoverHeroItem({
                         router.push(`/(app)/entry/manga/${item.id}`)
                     }
                 }}
-            />
+            >
+                <Animated.View
+                    className={cn(
+                        "flex-1",
+                        isFocused && isTV && "border-2 border-brand-400/80",
+                    )}
+                    style={isTV ? animatedStyle : undefined}
+                />
+            </Pressable>
+
+            <View
+                pointerEvents="none"
+                style={{
+                    position: "absolute",
+                    bottom: isTV ? 60 : 44,
+                    left: 0,
+                    right: 0,
+                    paddingHorizontal: isTV ? 32 : 20,
+                }}
+            >
+                <Text
+                    numberOfLines={2}
+                    style={{
+                        color: "white",
+                        fontSize: HERO_TITLE_FONT_SIZE,
+                        fontWeight: "800",
+                        lineHeight: isTV ? 44 : 32,
+                        marginBottom: isTV ? 10 : 8,
+                        textShadowColor: "rgba(0,0,0,0.55)",
+                        textShadowOffset: { width: 0, height: 1 },
+                        textShadowRadius: 6,
+                    }}
+                >
+                    {title}
+                </Text>
+
+                <View style={{ flexDirection: "row", alignItems: "center", gap: isTV ? 6 : 4, flexWrap: "wrap" }}>
+                    {!!score && !hideAudienceScore && (
+                        <View style={{ marginLeft: 1, marginRight: 2 }}>
+                            <MediaEntryAudienceScore score={score} />
+                        </View>
+                    )}
+                    {genres.map((genre, idx) => (
+                        <React.Fragment key={genre}>
+                            {idx > 0 && (
+                                <Text style={{ color: "rgba(255,255,255,0.2)", fontSize: HERO_GENRE_FONT_SIZE, fontWeight: "bold" }}> • </Text>
+                            )}
+                            <Text
+                                style={{
+                                    color: "rgba(255,255,255,0.55)",
+                                    fontSize: HERO_GENRE_FONT_SIZE,
+                                    fontWeight: "600",
+                                    textTransform: "uppercase",
+                                    letterSpacing: 0.5,
+                                }}
+                            >
+                                {genre}
+                            </Text>
+                        </React.Fragment>
+                    ))}
+                </View>
+
+                {description ? (
+                    <Text
+                        numberOfLines={isTV ? 2 : 2}
+                        style={{
+                            color: "rgba(255,255,255,0.5)",
+                            fontSize: isTV ? 14 : 12,
+                            lineHeight: isTV ? 20 : 17,
+                            marginTop: isTV ? 8 : 6,
+                        }}
+                    >
+                        {description}
+                    </Text>
+                ) : null}
+            </View>
         </View>
     )
 }
 
-export function DiscoverHeroCarouselInteractionLayer({ media, type, controller }: DiscoverHeroCarouselInteractionLayerProps) {
-    const serverStatus = useServerStatus()
+function stripHtml(value?: string) {
+    if (!value) return ""
+    return value
+        .replace(/<br\s*\/?>/gi, "\n")
+        .replace(/<[^>]*>/g, "")
+        .replace(/&quot;/g, "\"")
+        .replace(/&#039;/g, "'")
+        .replace(/&amp;/g, "&")
+        .trim()
+}
+
+export function DiscoverHeroCarouselInteractionLayer({ media, type, controller, onCarouselFocus }: DiscoverHeroCarouselInteractionLayerProps) {
     const isTV = useIsTV()
     const handleHorizontalScroll = useAnimatedScrollHandler({
         onScroll: event => {
             controller.scrollX.value = event.contentOffset.x
         },
     })
+    const carouselBlurTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+
+    const handleCarouselChildFocus = React.useCallback(() => {
+        if (carouselBlurTimer.current) {
+            clearTimeout(carouselBlurTimer.current)
+            carouselBlurTimer.current = null
+        }
+        controller.notifyFocusEnter()
+        onCarouselFocus?.()
+    }, [controller, onCarouselFocus])
+
+    const handleCarouselChildBlur = React.useCallback(() => {
+        carouselBlurTimer.current = setTimeout(() => {
+            controller.notifyFocusExit()
+        }, 50)
+    }, [controller])
 
     if (media.length === 0) return null
-
-    const current = media[controller.currentIndex]
-    const title = current?.title?.userPreferred || current?.title?.english || current?.title?.romaji || ""
-    const genres = current?.genres?.slice(0, 3) ?? []
-    const score = current?.meanScore
-    const hideAudienceScore = serverStatus?.settings?.anilist?.hideAudienceScore ?? false
 
     return (
         <View style={{ height: HERO_HEIGHT }}>
@@ -495,63 +646,11 @@ export function DiscoverHeroCarouselInteractionLayer({ media, type, controller }
                         width={controller.screenWidth}
                         height={HERO_HEIGHT}
                         index={index}
+                        onFocus={handleCarouselChildFocus}
+                        onBlur={handleCarouselChildBlur}
                     />
                 ))}
             </Animated.ScrollView>
-
-            <View
-                pointerEvents="none"
-                style={{
-                    position: "absolute",
-                    bottom: isTV ? 60 : 44,
-                    left: 0,
-                    right: 0,
-                    paddingHorizontal: isTV ? 32 : 20,
-                }}
-            >
-                <Text
-                    numberOfLines={2}
-                    style={{
-                        color: "white",
-                        fontSize: HERO_TITLE_FONT_SIZE,
-                        fontWeight: "800",
-                        lineHeight: isTV ? 44 : 32,
-                        marginBottom: isTV ? 14 : 10,
-                        textShadowColor: "rgba(0,0,0,0.55)",
-                        textShadowOffset: { width: 0, height: 1 },
-                        textShadowRadius: 6,
-                    }}
-                >
-                    {title}
-                </Text>
-
-                <View style={{ flexDirection: "row", alignItems: "center", gap: isTV ? 10 : 6, flexWrap: "wrap" }}>
-                    {!!score && !hideAudienceScore && (
-                        <View style={{ marginLeft: 2, marginRight: 4 }}>
-                            <MediaEntryAudienceScore score={score} />
-                        </View>
-                    )}
-                    {genres.map((genre, idx) => (
-                        <React.Fragment key={genre}>
-                            {idx > 0 && (
-                                <Text style={{ color: "rgba(255,255,255,0.2)", fontSize: HERO_GENRE_FONT_SIZE, fontWeight: "bold" }}> • </Text>
-                            )}
-                            <Text
-                                style={{
-                                    color: "rgba(255,255,255,0.55)",
-                                    fontSize: HERO_GENRE_FONT_SIZE,
-                                    fontWeight: "600",
-                                    textTransform: "uppercase",
-                                    letterSpacing: 0.5,
-                                }}
-                            >
-                                {genre}
-                            </Text>
-                        </React.Fragment>
-                    ))}
-                </View>
-
-            </View>
 
             {media.length > 1 && (
                 <View
@@ -570,7 +669,11 @@ export function DiscoverHeroCarouselInteractionLayer({ media, type, controller }
                             index={idx}
                             isActive={idx === controller.currentIndex}
                             isTV={isTV}
-                            onFocus={() => controller.scrollToIndex(idx)}
+                            onFocus={() => {
+                                controller.scrollToIndex(idx)
+                                handleCarouselChildFocus()
+                            }}
+                            onBlur={handleCarouselChildBlur}
                             onPress={() => controller.handleDotPress(idx)}
                         />
                     ))}

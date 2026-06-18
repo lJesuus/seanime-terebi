@@ -20,6 +20,7 @@ import {
 import { HorizontalMediaCardList } from "@/components/features/media/horizontal-media-card-list"
 import { TabFadeView } from "@/components/layout/tab-fade-view"
 import { MediaGenreSelector } from "@/components/shared/media-genre-selector"
+import { TvFocusablePressable } from "@/components/ui/tv-focusable"
 import { OfflineBanner } from "@/components/shared/offline-banner"
 import { Skeleton } from "@/components/ui/skeleton"
 import { COLORS } from "@/constants/colors"
@@ -29,19 +30,20 @@ import { useIOSScrollRefreshRateWorkaround } from "@/hooks/use-ios-scroll-refres
 import { useIsServerConnected } from "@/lib/offline"
 import { SEARCH_MEDIA_GENRES } from "@/lib/search/search-constants"
 import { cn } from "@/lib/utils"
+import { TVFocusContext } from "@/contexts/tv-focus-context"
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { useIsFocused } from "@react-navigation/native"
 import { router } from "expo-router"
 import * as React from "react"
-import { ActivityIndicator, Dimensions, Platform, Pressable, Text, View, ViewToken } from "react-native"
-import Animated, { useAnimatedScrollHandler, useAnimatedStyle, useSharedValue, withSpring } from "react-native-reanimated"
+import { ActivityIndicator, Dimensions, Platform, Text, View, ViewToken } from "react-native"
+import Animated, { useAnimatedScrollHandler, useSharedValue } from "react-native-reanimated"
 
 type DiscoverMode = "anime" | "manga"
 
 const { width: SCREEN_WIDTH } = Dimensions.get("screen")
 const isTV = Platform.isTV
-const DISCOVER_CARD_WIDTH = isTV ? SCREEN_WIDTH / 5.5 : (2 / 5) * SCREEN_WIDTH
-const DISCOVER_CARD_ROW_HEIGHT = DISCOVER_CARD_WIDTH * 1.5 + (isTV ? 24 : 16)
+const DISCOVER_CARD_WIDTH = isTV ? SCREEN_WIDTH / 7 : (2 / 5) * SCREEN_WIDTH
+const DISCOVER_CARD_ROW_HEIGHT = DISCOVER_CARD_WIDTH * 1.5 + (isTV ? 32 : 16)
 const DISCOVER_SECTION_HEADER_HEIGHT = isTV ? 64 : 56
 const DISCOVER_ANIME_SECTION_ITEMS = [
     { key: "trending" },
@@ -145,17 +147,21 @@ export function DiscoverModeToggle({
     onChangeMode: (mode: DiscoverMode) => void
 }) {
     const isTV = useIsTV()
+    const { sidebarTag } = React.useContext(TVFocusContext)
     return (
-        <View className={cn("flex-row self-center rounded-xl p-0.5", isTV ? "gap-3" : "mb-2")}>
+        <View className={cn("flex-row rounded-xl", isTV ? "gap-3 p-1" : "mb-2")}>
             <TogglePill
                 label="Anime"
                 isActive={mode === "anime"}
                 onPress={() => onChangeMode("anime")}
+                nextFocusLeft={sidebarTag ?? undefined}
+                hasTVPreferredFocus={isTV && mode === "anime"}
             />
             <TogglePill
                 label="Manga"
                 isActive={mode === "manga"}
                 onPress={() => onChangeMode("manga")}
+                hasTVPreferredFocus={isTV && mode === "manga"}
             />
         </View>
     )
@@ -165,87 +171,41 @@ function TogglePill({
     label,
     isActive,
     onPress,
+    nextFocusLeft,
+    nextFocusRight,
+    hasTVPreferredFocus,
 }: {
     label: string
     isActive: boolean
     onPress: () => void
+    nextFocusLeft?: number
+    nextFocusRight?: number
+    hasTVPreferredFocus?: boolean
 }) {
-    const isTV = useIsTV()
-    const [isFocused, setIsFocused] = React.useState(false)
-    const scale = useSharedValue(1)
-
-    React.useEffect(() => {
-        scale.set(withSpring(isFocused ? 1.05 : 1, { damping: 15, stiffness: 200 }))
-    }, [isFocused, scale])
-
-    const animatedStyle = useAnimatedStyle(() => ({
-        transform: [{ scale: scale.value }],
-    }))
-
     return (
-        <Pressable
-            focusable={isTV}
-            onFocus={() => setIsFocused(true)}
-            onBlur={() => setIsFocused(false)}
+        <TvFocusablePressable
             onPress={onPress}
             android_ripple={{ color: "rgba(255,255,255,0.1)" }}
+            className={cn(
+                "rounded-xl",
+                isTV ? "px-8 py-3" : "px-6 py-2",
+                isActive ? "bg-white/15" : "bg-transparent",
+            )}
+            focusedClassName="border border-brand-400/60"
+            {...(nextFocusLeft !== undefined ? { nextFocusLeft } : {})}
+            {...(nextFocusRight !== undefined ? { nextFocusRight } : {})}
+            {...(hasTVPreferredFocus !== undefined ? { hasTVPreferredFocus } : {})}
         >
-            <Animated.View
+            <Text
                 className={cn(
-                    "rounded-xl px-6 py-2",
-                    isActive ? "bg-white/15" : "bg-transparent",
-                    isFocused && isTV ? "border border-brand-400/60" : "",
+                    "font-medium text-white/45",
+                    isActive && "font-bold text-white",
                 )}
-                style={isTV ? animatedStyle : undefined}
+                style={{ fontSize: isTV ? 18 : 14 }}
             >
-                <Text
-                    className={cn(
-                        "text-sm font-medium text-white/45",
-                        isActive && "font-bold text-white",
-                    )}
-                    style={isTV ? { fontSize: 16 } : undefined}
-                >
-                    {label}
-                </Text>
-            </Animated.View>
-        </Pressable>
-    )
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// Search row
-///////////////////////////////////////////////////////////////////////////////
-
-function DiscoverSearchRow({ type }: { type: DiscoverMode }) {
-    const isTV = useIsTV()
-    const [isFocused, setIsFocused] = React.useState(false)
-    const scale = useSharedValue(1)
-
-    React.useEffect(() => {
-        scale.set(withSpring(isFocused ? 1.1 : 1, { damping: 15, stiffness: 200 }))
-    }, [isFocused, scale])
-
-    const animatedStyle = useAnimatedStyle(() => ({
-        transform: [{ scale: scale.value }],
-    }))
-
-    return (
-        <Pressable
-            focusable={isTV}
-            onFocus={() => setIsFocused(true)}
-            onBlur={() => setIsFocused(false)}
-            onPress={() => router.push(`/(app)/(tabs)/discover/search?type=${type}`)}
-        >
-            <Animated.View
-                className={cn(
-                    "rounded-2xl p-2 active:opacity-75",
-                    isFocused && isTV ? "bg-white/10" : "",
-                )}
-                style={isTV ? animatedStyle : undefined}
-            >
-                <Ionicons name="search-outline" size={isTV ? 30 : 24} color="rgba(255,255,255,0.35)" />
-            </Animated.View>
-        </Pressable>
+                {label}
+            </Text>
+        </TvFocusablePressable>
     )
 }
 
@@ -283,13 +243,15 @@ function HeroSkeleton() {
 }
 
 function useDiscoverSectionActivation(sectionCount: number) {
-    const [highestActivatedIndex, setHighestActivatedIndex] = React.useState(() => Math.min(sectionCount - 1, 1))
+    const [highestActivatedIndex, setHighestActivatedIndex] = React.useState(() => isTV ? Math.min(sectionCount - 1, 3) : Math.min(sectionCount - 1, 1))
     const sectionCountRef = React.useRef(sectionCount)
     const viewabilityConfig = React.useRef({ itemVisiblePercentThreshold: 15 }).current
 
     React.useEffect(() => {
         sectionCountRef.current = sectionCount
-        setHighestActivatedIndex(Math.min(sectionCount - 1, 1))
+        if (!isTV) {
+            setHighestActivatedIndex(Math.min(sectionCount - 1, 1))
+        }
     }, [sectionCount])
 
     const onViewableItemsChanged = React.useRef(({ viewableItems }: { viewableItems: Array<ViewToken> }) => {
@@ -323,29 +285,27 @@ function DiscoverListHeader({
     heroLoading,
     heroController,
     onChangeMode,
+    onCarouselFocus,
 }: {
     mode: DiscoverMode
     heroMedia: Array<AL_BaseAnime | AL_BaseManga>
     heroLoading: boolean
     heroController: ReturnType<typeof useDiscoverHeroCarouselController>
     onChangeMode: (mode: DiscoverMode) => void
+    onCarouselFocus?: () => void
 }) {
     const isTV = useIsTV()
     return (
         <>
+            <View className={cn("flex-row items-center", isTV ? "px-6 pt-5 pb-2 gap-4" : "px-3.5 gap-2")}>
+                <DiscoverModeToggle mode={mode} onChangeMode={onChangeMode} />
+            </View>
+
             {heroMedia.length > 0 ? (
-                <DiscoverHeroCarouselInteractionLayer media={heroMedia} type={mode} controller={heroController} />
+                <DiscoverHeroCarouselInteractionLayer media={heroMedia} type={mode} controller={heroController} onCarouselFocus={onCarouselFocus} />
             ) : heroLoading ? (
                 <HeroSkeleton />
             ) : null}
-
-            <View className={cn("flex-row items-center justify-between", isTV ? "px-6 pt-4 pb-2" : "px-3.5")}>
-                <View className="pt-1">
-                    <DiscoverModeToggle mode={mode} onChangeMode={onChangeMode} />
-                </View>
-
-                <DiscoverSearchRow type={mode} />
-            </View>
         </>
     )
 }
@@ -392,6 +352,7 @@ function DiscoverHorizontalSection({
     sectionIndex,
     showAudienceScore,
     hideCount,
+    onCardFocus,
 }: {
     enabled: boolean
     isLoading: boolean
@@ -402,6 +363,7 @@ function DiscoverHorizontalSection({
     sectionIndex: number
     showAudienceScore?: boolean
     hideCount?: boolean
+    onCardFocus?: (sectionIndex: number) => void
 }) {
     if (!enabled || isLoading) {
         return <DiscoverSectionSkeleton title={title} />
@@ -420,6 +382,7 @@ function DiscoverHorizontalSection({
             onMediaPress={onMediaPress as never}
             showAudienceScore={showAudienceScore}
             hideCount={hideCount}
+            onCardFocus={onCardFocus}
         />
     )
 }
@@ -476,6 +439,17 @@ function DiscoverAnimeSections({
         ],
         [],
     )
+    const scrollRef = React.useRef<React.ElementRef<typeof Animated.FlatList<DiscoverAnimeSectionItem>>>(null)
+    const lastFocusedSection = React.useRef<number | null>(null)
+    const handleCarouselFocus = React.useCallback(() => {
+        scrollRef.current?.scrollToOffset({ offset: 0, animated: true })
+    }, [])
+    const handleCardFocus = React.useCallback((sectionIndex: number) => {
+        if (sectionIndex === DISCOVER_ANIME_SECTION_ITEMS.length - 1) return
+        if (lastFocusedSection.current === sectionIndex) return
+        lastFocusedSection.current = sectionIndex
+            scrollRef.current?.scrollToIndex({ index: sectionIndex, animated: true, viewPosition: 0.5 })
+    }, [])
     const listHeader = React.useMemo(() => (
         <DiscoverListHeader
             mode="anime"
@@ -483,8 +457,9 @@ function DiscoverAnimeSections({
             heroLoading={heroLoading}
             heroController={heroController}
             onChangeMode={onChangeMode}
+            onCarouselFocus={handleCarouselFocus}
         />
-    ), [heroController, heroLoading, heroMedia, onChangeMode])
+    ), [heroController, heroLoading, heroMedia, onChangeMode, handleCarouselFocus])
     const keyExtractor = React.useCallback((item: DiscoverAnimeSectionItem) => item.key, [])
     const renderSectionItem = React.useCallback(({ item }: { item: DiscoverAnimeSectionItem }) => {
             switch (item.key) {
@@ -506,6 +481,7 @@ function DiscoverAnimeSections({
                                 onMediaPress={(m) => router.push(`/(app)/entry/anime/${m.id}`)}
                                 showAudienceScore
                                 hideCount
+                                onCardFocus={handleCardFocus}
                             />
                         </View>
                     )
@@ -521,6 +497,7 @@ function DiscoverAnimeSections({
                             onMediaPress={(m) => router.push(`/(app)/entry/anime/${m.id}`)}
                             showAudienceScore
                             hideCount
+                            onCardFocus={handleCardFocus}
                         />
                     )
                 case "past-season":
@@ -535,6 +512,7 @@ function DiscoverAnimeSections({
                             onMediaPress={(m) => router.push(`/(app)/entry/anime/${m.id}`)}
                             showAudienceScore
                             hideCount
+                            onCardFocus={handleCardFocus}
                         />
                     )
                 case "upcoming":
@@ -549,6 +527,7 @@ function DiscoverAnimeSections({
                             onMediaPress={(m) => router.push(`/(app)/entry/anime/${m.id}`)}
                             showAudienceScore
                             hideCount
+                            onCardFocus={handleCardFocus}
                         />
                     )
                 case "movies":
@@ -563,6 +542,7 @@ function DiscoverAnimeSections({
                             onMediaPress={(m) => router.push(`/(app)/entry/anime/${m.id}`)}
                             showAudienceScore
                             hideCount
+                            onCardFocus={handleCardFocus}
                         />
                     )
                 case "missed":
@@ -577,16 +557,18 @@ function DiscoverAnimeSections({
                             onMediaPress={(m) => router.push(`/(app)/entry/anime/${m.id}`)}
                             showAudienceScore
                             hideCount
+                            onCardFocus={handleCardFocus}
                         />
                     )
             }
         },
         [currentSeasonEnabled, currentSeasonLoading, currentSeasonMedia, missedEnabled, missedLoading, missedMedia, moviesEnabled, moviesLoading,
             moviesMedia, onChangeTrendingGenre, pastSeasonEnabled, pastSeasonLoading, pastSeasonMedia, selectedTrendingGenre, trendingEnabled,
-            trendingGenreOptions, trendingLoading, trendingMedia, upcomingEnabled, upcomingLoading, upcomingMedia])
+            trendingGenreOptions, trendingLoading, trendingMedia, upcomingEnabled, upcomingLoading, upcomingMedia, handleCardFocus])
 
     return (
         <Animated.FlatList
+            ref={scrollRef}
             data={DISCOVER_ANIME_SECTION_ITEMS}
             keyExtractor={keyExtractor}
             renderItem={renderSectionItem}
@@ -601,7 +583,7 @@ function DiscoverAnimeSections({
             removeClippedSubviews
             showsVerticalScrollIndicator={false}
             scrollEventThrottle={16}
-            contentContainerStyle={{ paddingBottom: 100 }}
+            contentContainerStyle={{ paddingBottom: isTV ? 0 : 100 }}
         />
     )
 }
@@ -635,6 +617,17 @@ function DiscoverMangaSections({
     const jpMedia = mangaJP?.Page?.media?.filter(Boolean) ?? []
     const krMedia = manhwaKR?.Page?.media?.filter(Boolean) ?? []
     const cnMedia = manhuaCN?.Page?.media?.filter(Boolean) ?? []
+    const scrollRef = React.useRef<React.ElementRef<typeof Animated.FlatList<DiscoverMangaSectionItem>>>(null)
+    const lastFocusedSection = React.useRef<number | null>(null)
+    const handleCarouselFocus = React.useCallback(() => {
+        scrollRef.current?.scrollToOffset({ offset: 0, animated: true })
+    }, [])
+    const handleCardFocus = React.useCallback((sectionIndex: number) => {
+        if (sectionIndex === DISCOVER_MANGA_SECTION_ITEMS.length - 1) return
+        if (lastFocusedSection.current === sectionIndex) return
+        lastFocusedSection.current = sectionIndex
+            scrollRef.current?.scrollToIndex({ index: sectionIndex, animated: true, viewPosition: 0.5 })
+    }, [])
     const listHeader = React.useMemo(() => (
         <DiscoverListHeader
             mode="manga"
@@ -642,8 +635,9 @@ function DiscoverMangaSections({
             heroLoading={heroLoading}
             heroController={heroController}
             onChangeMode={onChangeMode}
+            onCarouselFocus={handleCarouselFocus}
         />
-    ), [heroController, heroLoading, heroMedia, onChangeMode])
+    ), [heroController, heroLoading, heroMedia, onChangeMode, handleCarouselFocus])
     const keyExtractor = React.useCallback((item: DiscoverMangaSectionItem) => item.key, [])
     const renderSectionItem = React.useCallback(({ item }: { item: DiscoverMangaSectionItem }) => {
         switch (item.key) {
@@ -657,6 +651,7 @@ function DiscoverMangaSections({
                         sectionIndex={0}
                         media={jpMedia}
                         onMediaPress={(m) => router.push(`/(app)/entry/manga/${m.id}`)}
+                        onCardFocus={handleCardFocus}
                     />
                 )
             case "kr":
@@ -669,6 +664,7 @@ function DiscoverMangaSections({
                         sectionIndex={1}
                         media={krMedia}
                         onMediaPress={(m) => router.push(`/(app)/entry/manga/${m.id}`)}
+                        onCardFocus={handleCardFocus}
                     />
                 )
             case "cn":
@@ -681,13 +677,15 @@ function DiscoverMangaSections({
                         sectionIndex={2}
                         media={cnMedia}
                         onMediaPress={(m) => router.push(`/(app)/entry/manga/${m.id}`)}
+                        onCardFocus={handleCardFocus}
                     />
                 )
         }
-    }, [cnEnabled, cnMedia, jpEnabled, jpMedia, krEnabled, krMedia, manhuaCNLoading, manhwaKRLoading, mangaJPLoading])
+    }, [cnEnabled, cnMedia, jpEnabled, jpMedia, krEnabled, krMedia, manhuaCNLoading, manhwaKRLoading, handleCardFocus])
 
     return (
         <Animated.FlatList
+            ref={scrollRef}
             data={DISCOVER_MANGA_SECTION_ITEMS}
             keyExtractor={keyExtractor}
             renderItem={renderSectionItem}
@@ -702,7 +700,7 @@ function DiscoverMangaSections({
             removeClippedSubviews
             showsVerticalScrollIndicator={false}
             scrollEventThrottle={16}
-            contentContainerStyle={{ paddingBottom: 100 }}
+            contentContainerStyle={{ paddingBottom: isTV ? 0 : 100 }}
         />
     )
 }

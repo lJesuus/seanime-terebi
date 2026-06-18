@@ -5,9 +5,11 @@ import { useServerUrl } from "@/atoms/server.atoms"
 import { ProfileSubpageHeader } from "@/components/features/profile/profile-menu"
 import { SeaImage } from "@/components/shared/sea-image"
 import { SeaBottomSheet } from "@/components/ui/bottom-sheet"
+import { TvFocusablePressable } from "@/components/ui/tv-focusable"
 import { useIOSScrollRefreshRateWorkaround } from "@/hooks/use-ios-scroll-refresh-rate-workaround"
 import { syncLocalServerFilesToDownloads } from "@/lib/downloads/download-manager"
 import { useIsServerConnected } from "@/lib/offline"
+import { cn } from "@/lib/utils"
 import { Ionicons } from "@expo/vector-icons"
 import { BottomSheetTextInput } from "@gorhom/bottom-sheet"
 import * as React from "react"
@@ -261,5 +263,93 @@ export default function UnmatchedScreen() {
                 )}
             </SeaBottomSheet>
         </View>
+    )
+}
+
+// ── TV Panel ──────────────────────────────────────────────────────
+
+export function UnmatchedPanel({
+    nextFocusLeft,
+}: {
+    nextFocusLeft?: number | null
+}) {
+    const isConnected = useIsServerConnected()
+    const serverUrl = useServerUrl()
+    const { data: libraryCollection, isLoading: isLoadingCollection } = useGetLibraryCollection({ enabled: isConnected })
+    const { mutate: manualMatch, isPending: isMatching } = useAnimeEntryManualMatch()
+    const [matchingDir, setMatchingDir] = React.useState<string | null>(null)
+
+    const unmatchedGroups = libraryCollection?.unmatchedGroups ?? []
+
+    const handleMatch = React.useCallback((group: UnmatchedGroup) => {
+        if (!group.localFiles || group.localFiles.length === 0 || !group.suggestions || group.suggestions.length === 0) return
+
+        const suggestion = group.suggestions[0]
+        setMatchingDir(group.dir)
+
+        manualMatch(
+            {
+                mediaId: suggestion.id,
+                paths: group.localFiles.map(f => f.path),
+            },
+            {
+                onSuccess: () => {
+                    if (serverUrl) {
+                        void syncLocalServerFilesToDownloads(serverUrl)
+                    }
+                    setMatchingDir(null)
+                },
+                onError: () => {
+                    setMatchingDir(null)
+                },
+            },
+        )
+    }, [manualMatch, serverUrl])
+
+    if (!isConnected) {
+        return (
+            <View className="items-center justify-center pt-20 px-6 gap-3">
+                <Ionicons name="wifi-outline" size={48} color="rgba(255,255,255,0.25)" />
+                <Text className="text-white text-base font-semibold text-center">Server Offline</Text>
+            </View>
+        )
+    }
+
+    return (
+        <ScrollView className="flex-1 px-4 pt-2">
+            {isLoadingCollection ? (
+                <ActivityIndicator size="large" color="white" className="pt-20" />
+            ) : unmatchedGroups.length === 0 ? (
+                <Text className="text-white/40 text-sm text-center pt-20">No unmatched groups found</Text>
+            ) : (
+                unmatchedGroups.map((group) => (
+                    <View key={group.dir} className="bg-white/[0.03] border border-white/5 rounded-2xl p-4 mb-3">
+                        <Text className="text-white text-sm font-semibold" numberOfLines={2}>
+                            {group.dir.split("/").pop() || group.dir}
+                        </Text>
+                        <Text className="text-white/40 text-[10px] mt-1">
+                            {group.localFiles?.length || 0} files
+                        </Text>
+                        {group.suggestions && group.suggestions.length > 0 && (
+                            <Text className="text-white/40 text-[10px] mt-0.5" numberOfLines={1}>
+                                Suggested: {group.suggestions[0].title?.romaji || group.suggestions[0].title?.english}
+                            </Text>
+                        )}
+                        <TvFocusablePressable
+                            className={cn("flex-row items-center justify-center px-4 py-2 rounded-lg mt-3 bg-brand-500/20 border border-brand-400/30", isMatching && matchingDir === group.dir ? "opacity-50" : "")}
+                            focusedClassName="border-brand-400/60 bg-brand-500/30"
+                            onPress={isMatching ? undefined : () => handleMatch(group)}
+                            focusable={!isMatching}
+                            nextFocusLeft={nextFocusLeft ?? undefined}
+                        >
+                            <Ionicons name="checkmark-circle" size={16} color="rgba(255,255,255,0.8)" />
+                            <Text className="text-sm font-semibold text-white ml-2">
+                                {isMatching && matchingDir === group.dir ? "Matching..." : "Auto-Match"}
+                            </Text>
+                        </TvFocusablePressable>
+                    </View>
+                ))
+            )}
+        </ScrollView>
     )
 }

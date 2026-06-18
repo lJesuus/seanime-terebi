@@ -3,22 +3,22 @@ import { __media_listPageContentAtom } from "@/atoms/media-list"
 import { MediaEntryCard } from "@/components/features/media/media-entry-card"
 import { Button } from "@/components/ui/button"
 import { Text } from "@/components/ui/text"
+import { TvFocusablePressable } from "@/components/ui/tv-focusable"
 import { Ionicons } from "@/lib/icons/Ionicons"
 import { buildMediaEntryHref, getMediaEntryKind } from "@/lib/media-entry-route"
 import { cn } from "@/lib/utils"
 import { router } from "expo-router"
 import { useAtom } from "jotai/react"
 import React from "react"
-import { Dimensions, FlatList, ListRenderItemInfo, Pressable, View, Platform } from "react-native"
-import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated"
+import { Dimensions, FlatList, ListRenderItemInfo, View, Platform } from "react-native"
 
 const { width } = Dimensions.get("screen")
 const isTV = Platform.isTV
-const CARD_WIDTH = isTV ? (width / 5.5) : ((2 / 5) * width)
+const CARD_WIDTH = isTV ? (width / 7) : ((2 / 5) * width)
 const CARD_ROW_HEIGHT = CARD_WIDTH * 1.5 + (isTV ? 32 : 16)
 const SPACING = isTV ? 20 : 10
 const PADDING_HORIZONTAL = isTV ? 28 : 20
-const HORIZONTAL_INITIAL_RENDER = isTV ? 5 : 4
+const HORIZONTAL_INITIAL_RENDER = isTV ? 7 : 4
 
 type HorizontalMediaCardListProps<T extends "anime" | "manga"> = {
     title: string
@@ -30,6 +30,9 @@ type HorizontalMediaCardListProps<T extends "anime" | "manga"> = {
     showAudienceScore?: boolean
     hideCount?: boolean
     hideLibraryBadge?: boolean
+    onCardFocus?: (sectionIndex: number) => void
+    onEndReached?: () => void
+    compact?: boolean
 }
 
 export function HorizontalMediaCardList<T extends "anime" | "manga">(props: HorizontalMediaCardListProps<T>) {
@@ -43,12 +46,17 @@ export function HorizontalMediaCardList<T extends "anime" | "manga">(props: Hori
         showAudienceScore = false,
         hideCount = false,
         hideLibraryBadge = false,
+        sectionIndex,
+        onCardFocus,
+        onEndReached,
+        compact = false,
     } = props
 
+    const infiniteScroll = !!onEndReached
     const [, setMediaListPageContent] = useAtom(__media_listPageContentAtom)
     const visibleMedia = React.useMemo(
-        () => !limit ? media : media.slice(0, limit),
-        [limit, media],
+        () => infiniteScroll ? media : (!limit ? media : media.slice(0, limit)),
+        [infiniteScroll, limit, media],
     )
 
     const keyExtractor = React.useCallback((item: AL_BaseAnime | AL_BaseManga, index: number) => `${item.id}-${index}`, [])
@@ -59,87 +67,39 @@ export function HorizontalMediaCardList<T extends "anime" | "manga">(props: Hori
         index,
     }), [])
 
-function ArrowForwardButton({ onPress }: { onPress: () => void }) {
-    const [isFocused, setIsFocused] = React.useState(false)
-    const scale = useSharedValue(1)
-
-    React.useEffect(() => {
-        scale.set(withTiming(isFocused ? 1.1 : 1, { duration: 150 }))
-    }, [isFocused, scale])
-
-    const animatedStyle = useAnimatedStyle(() => ({
-        transform: [{ scale: scale.value }],
-    }))
-
-    return (
-        <Pressable
-            focusable={isTV}
-            onFocus={() => setIsFocused(true)}
-            onBlur={() => setIsFocused(false)}
-            onPress={onPress}
-        >
-            <Animated.View
-                className={cn(
-                    "rounded-full p-2",
-                    isFocused && isTV ? "bg-white/10 border-2 border-brand-400/80" : "",
-                )}
-                style={isTV ? animatedStyle : undefined}
-            >
-                <Ionicons name="arrow-forward" size={isTV ? 24 : 18} colorClassName="accent-foreground" />
-            </Animated.View>
-        </Pressable>
-    )
-}
-
 function SeeAllButton({
     onPress,
     mediaLength,
+    onFocus,
 }: {
     onPress: () => void
     mediaLength: number
+    onFocus?: (e: any) => void
 }) {
-    const [isFocused, setIsFocused] = React.useState(false)
-    const scale = useSharedValue(1)
-
-    React.useEffect(() => {
-        scale.set(withTiming(isFocused ? 1.05 : 1, { duration: 150 }))
-    }, [isFocused, scale])
-
-    const animatedStyle = useAnimatedStyle(() => ({
-        transform: [{ scale: scale.value }],
-    }))
-
     return (
-        <Pressable
-            focusable={isTV}
-            onFocus={() => setIsFocused(true)}
-            onBlur={() => setIsFocused(false)}
+        <TvFocusablePressable
             onPress={onPress}
+            onFocus={onFocus}
             style={{ width: CARD_WIDTH, height: CARD_WIDTH * 1.5 }}
             className="rounded-md flex justify-center items-center"
+            focusedClassName="bg-white/10 border-2 border-brand-400/80"
         >
-            <Animated.View
-                className={cn(
-                    "flex-1 w-full rounded-md justify-center items-center",
-                    isFocused && isTV ? "bg-white/10 border-2 border-brand-400/80" : "",
-                )}
-                style={isTV ? animatedStyle : undefined}
+            <Button
+                variant="secondary"
+                className={cn("text-xl text-muted-foreground p-4", isTV ? "text-2xl" : "")}
             >
-                <Button
-                    variant="secondary"
-                    className={cn("text-xl text-muted-foreground p-4", isTV ? "text-2xl" : "")}
-                >
-                    <Text className={cn("text-xl", isTV ? "text-2xl" : "")}>
-                        See all ({mediaLength})
-                    </Text>
-                </Button>
-            </Animated.View>
-        </Pressable>
+                <Text className={cn("text-xl", isTV ? "text-2xl" : "")}>
+                    See all ({mediaLength})
+                </Text>
+            </Button>
+        </TvFocusablePressable>
     )
 }
 
+    const handleFocus = React.useCallback(() => onCardFocus?.(sectionIndex ?? 0), [onCardFocus, sectionIndex])
+
     const renderItem = React.useCallback(({ item, index }: ListRenderItemInfo<AL_BaseAnime | AL_BaseManga>) => {
-        if (index === limit - 1) {
+        if (!infiniteScroll && index === limit - 1 && media.length > limit) {
             return (
                 <SeeAllButton
                     onPress={() => {
@@ -151,6 +111,7 @@ function SeeAllButton({
                         router.push("/(app)/(media)/media-list")
                     }}
                     mediaLength={media.length}
+                    onFocus={handleFocus}
                 />
             )
         }
@@ -169,6 +130,7 @@ function SeeAllButton({
                     else router.push(buildMediaEntryHref(item, type))
                 }}
                 hideLibraryBadge={hideLibraryBadge}
+                onFocus={handleFocus}
             />
         }
 
@@ -183,44 +145,35 @@ function SeeAllButton({
                 else router.push(buildMediaEntryHref(item, type))
             }}
             hideLibraryBadge={hideLibraryBadge}
+            onFocus={handleFocus}
         />
-    }, [limit, media, onMediaPress, setMediaListPageContent, showAudienceScore, title, type, hideLibraryBadge])
+    }, [infiniteScroll, limit, media, onMediaPress, setMediaListPageContent, showAudienceScore, title, type, hideLibraryBadge, handleFocus])
 
     if (media.length === 0) return null
 
     return (
         <View
-            className="flex-col gap-4"
+            className={cn("flex-col", compact ? "gap-0" : "gap-4")}
         >
 
             <View
-                    className="flex-row w-full justify-between items-center"
-                    style={{ paddingRight: PADDING_HORIZONTAL }}
+                    className="flex-row w-full"
+                    style={{ paddingHorizontal: PADDING_HORIZONTAL }}
                 >
                 <Text
-                    className={cn("font-bold text-foreground", isTV ? "text-2xl" : "text-xl")}
-                    style={{ paddingLeft: PADDING_HORIZONTAL, paddingVertical: isTV ? 24 : 16 }}
+                    className={cn("font-bold text-foreground", isTV ? (compact ? "text-xl" : "text-2xl") : "text-xl")}
+                    style={{ paddingVertical: compact ? 0 : (isTV ? 24 : 16) }}
                 >
-                    {title} {!hideCount && <Text className={cn("text-muted-foreground ml-4", isTV ? "text-2xl" : "text-xl")}>{media.length}</Text>}
+                    {title} {!hideCount && <Text className={cn("text-muted-foreground ml-4", isTV && !compact ? "text-2xl" : "text-xl")}>{media.length}</Text>}
                 </Text>
-
-                {(media.length > limit) && <ArrowForwardButton
-                    onPress={() => {
-                        setMediaListPageContent({
-                            title,
-                            type,
-                            media,
-                        })
-                        router.push("/(app)/(media)/media-list")
-                    }}
-                />}
             </View>
 
-            <View className="w-full" style={{ height: CARD_ROW_HEIGHT }}>
+            <View className="w-full" style={{ height: compact ? CARD_WIDTH * 1.5 : CARD_ROW_HEIGHT }}>
                 <FlatList
                     data={visibleMedia as (AL_BaseAnime | AL_BaseManga)[]}
                     horizontal
-                    style={{ height: CARD_ROW_HEIGHT, width: "100%" }}
+                    focusable={false}
+                    style={{ height: compact ? CARD_WIDTH * 1.5 : CARD_ROW_HEIGHT, width: "100%" }}
                     showsHorizontalScrollIndicator={false}
                     keyExtractor={keyExtractor}
                     renderItem={renderItem}
@@ -231,6 +184,8 @@ function SeeAllButton({
                     removeClippedSubviews={!isTV}
                     contentContainerStyle={{ gap: SPACING, paddingHorizontal: PADDING_HORIZONTAL }}
                     decelerationRate="normal"
+                    onEndReached={infiniteScroll ? onEndReached : undefined}
+                    onEndReachedThreshold={0.4}
                 />
             </View>
         </View>

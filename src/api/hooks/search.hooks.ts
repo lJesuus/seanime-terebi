@@ -24,7 +24,7 @@ export function useInfiniteAnimeSearch(params: SearchParams, enabled: boolean) {
             const hasNext = lastPage?.Page?.pageInfo?.hasNextPage
             return curr != null && hasNext ? curr + 1 : undefined
         },
-        enabled: !!serverUrl && enabled && params.type === "anime",
+        enabled: !!serverUrl && enabled,
     })
 }
 
@@ -47,6 +47,6 @@ export function useInfiniteMangaSearch(params: SearchParams, enabled: boolean) {
             const hasNext = lastPage?.Page?.pageInfo?.hasNextPage
             return curr != null && hasNext ? curr + 1 : undefined
         },
-        enabled: !!serverUrl && enabled && params.type === "manga",
+        enabled: !!serverUrl && enabled,
     })
 }

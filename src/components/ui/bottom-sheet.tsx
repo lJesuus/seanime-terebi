@@ -1,8 +1,9 @@
+import { useIsTV } from "@/hooks/use-device"
 import { NAV_THEME } from "@/lib/constants"
 import BottomSheet, { BottomSheetBackdrop, type BottomSheetBackdropProps, BottomSheetScrollView } from "@gorhom/bottom-sheet"
 import { Portal } from "@rn-primitives/portal"
-import React, { useCallback, useId, useMemo, useRef } from "react"
-import { Text, View } from "react-native"
+import React, { useCallback, useEffect, useId, useMemo, useRef } from "react"
+import { BackHandler, Text, View } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 
 type BottomSheetProps = {
@@ -37,6 +38,18 @@ export function SeaBottomSheet({
     const id = useId()
     const bottomSheetRef = useRef<BottomSheet>(null)
     const insets = useSafeAreaInsets()
+    const isTV = useIsTV()
+
+    // BACK key closes the sheet (TV remote)
+    useEffect(() => {
+        if (!open) return
+        const onBackPress = () => {
+            onOpenChange(false)
+            return true
+        }
+        BackHandler.addEventListener("hardwareBackPress", onBackPress)
+        return () => BackHandler.removeEventListener("hardwareBackPress", onBackPress)
+    }, [open, onOpenChange])
 
     const snapPoints = useMemo(() => _snapPoints, [_snapPoints])
 
@@ -74,6 +87,8 @@ export function SeaBottomSheet({
                         ref={bottomSheetRef}
                         index={index}
                         snapPoints={snapPoints}
+                        accessible={isTV ? true : undefined}
+                        accessibilityViewIsModal={isTV ? true : undefined}
                         enableContentPanningGesture={enableContentPanningGesture}
                         enableHandlePanningGesture={enableHandlePanningGesture}
                         enablePanDownToClose={enablePanDownToClose}

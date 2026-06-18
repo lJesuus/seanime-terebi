@@ -1,4 +1,5 @@
 import { Anime_Entry, Anime_Episode } from "@/api/generated/types"
+import { AnimeEntryInfoView } from "@/components/features/media/anime-entry-info-view"
 import { getEpisodePercentageComplete, useGetContinuityWatchHistory } from "@/api/hooks/continuity.hooks"
 import { useServerStatus } from "@/atoms/server.atoms"
 import { EpisodeCardList } from "@/components/features/anime/episode-card-list"
@@ -37,6 +38,7 @@ type AnimeEntryLibraryViewProps = {
     onViewChange?: (view: AnimeEntryView) => void
     isOffline?: boolean
     hiddenViews?: Set<AnimeEntryView>
+    nextFocusDown?: number | null
 }
 
 type EpisodeSection = {
@@ -73,6 +75,7 @@ export function AnimeEntryLibraryView({
     onViewChange,
     isOffline,
     hiddenViews,
+    nextFocusDown,
 }: AnimeEntryLibraryViewProps) {
     const hasEpisodes = mainEpisodes.length > 0 || specialEpisodes.length > 0 || ncEpisodes.length > 0
     const entryKey = entry.media?.id ?? mediaId ?? entry.mediaId
@@ -97,6 +100,12 @@ export function AnimeEntryLibraryView({
     React.useEffect(() => {
         scrollY.set(0)
     }, [entryKey, scrollY])
+
+    const sectionListRef = React.useRef<SectionList>(null)
+
+    const handleTitlePress = React.useCallback(() => {
+        ;(sectionListRef.current as any)?.scrollToEnd({ animated: true })
+    }, [])
 
     const fullSections = React.useMemo(() => {
         const nextSections: Array<Omit<EpisodeSection, "totalCount"> & { totalCount: number }> = []
@@ -198,7 +207,7 @@ export function AnimeEntryLibraryView({
 
     const listHeader = React.useMemo(() => (
             <>
-                <MediaEntryHeaderContent entry={entry} type="anime" onTitlePress={onTitlePress} />
+                <MediaEntryHeaderContent entry={entry} type="anime" onTitlePress={handleTitlePress} nextFocusDown={nextFocusDown} />
                 <OfflineBanner />
 
                 {currentView && onViewChange && (
@@ -207,6 +216,7 @@ export function AnimeEntryLibraryView({
                         onViewChange={onViewChange}
                         isOffline={isOffline}
                         hiddenViews={hiddenViews}
+                        nextFocusDown={nextFocusDown}
                     />
                 )}
 
@@ -235,18 +245,24 @@ export function AnimeEntryLibraryView({
             </>
         ),
         [continueWatchingSpoilerActive, entry, entryProgress, isConnected, mediaId, onEpisodePress, unwatchedMainEpisodes, watchHistory,
-            showDeferredContent, onTitlePress, currentView, onViewChange, isOffline, hiddenViews])
+            showDeferredContent, onTitlePress, currentView, onViewChange, isOffline, hiddenViews, nextFocusDown])
 
     return (
         <View className={showHeaderBackground ? "flex-1 bg-background" : "flex-1 bg-transparent"}>
             {showHeaderBackground ? <MediaEntryHeaderBackground entry={entry} scrollY={scrollY} /> : null}
             <AnimatedSectionList
+                ref={sectionListRef as any}
                 key={String(entryKey)}
                 sections={visibleSections as any}
                 renderItem={renderEpisode}
                 renderSectionHeader={renderSectionHeader}
                 keyExtractor={keyExtractor}
                 ListHeaderComponent={listHeader}
+                ListFooterComponent={showDeferredContent ? (
+                    <View className="px-4 pt-6 pb-8">
+                        <AnimeEntryInfoView mediaId={mediaId ?? entry.mediaId} fallbackDescription={entry.media?.description} />
+                    </View>
+                ) : null}
                 initialNumToRender={initialRenderItemCount}
                 maxToRenderPerBatch={maxRenderPerBatch}
                 windowSize={9}

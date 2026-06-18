@@ -14,6 +14,7 @@ import { SegmentedControl } from "@/components/shared/segmented-control"
 import { SheetFooter, SheetFooterButton } from "@/components/shared/sheet-footer"
 import { SeaBottomSheet } from "@/components/ui/bottom-sheet"
 import { FormSectionLabel } from "@/components/ui/form-field"
+import { useIsTV } from "@/hooks/use-device"
 import { copyOfflineLogTextToClipboard } from "@/lib/offline-logger"
 import { cn } from "@/lib/utils"
 import { toast } from "@/lib/utils/toast"
@@ -427,6 +428,7 @@ type TorrentSelectionStageProps = {
 }
 
 function TorrentSelectionStage(props: TorrentSelectionStageProps) {
+    const isTV = useIsTV()
     const [isFiltersExpanded, setIsFiltersExpanded] = React.useState(false)
     const {
         batchHistory,
@@ -497,6 +499,7 @@ function TorrentSelectionStage(props: TorrentSelectionStageProps) {
                 <Pressable
                     key={`${torrent.infoHash ?? torrent.downloadUrl}-${index}`}
                     onPress={() => onSelectTorrent(isSelected ? null : torrent)}
+                    focusable={isTV}
                 >
                     <TorrentCard
                         torrent={torrent}
@@ -600,6 +603,7 @@ function TorrentSelectionStage(props: TorrentSelectionStageProps) {
                 <View className="gap-3">
                     <Pressable
                         onPress={() => setIsFiltersExpanded(!isFiltersExpanded)}
+                        focusable={isTV}
                         className="flex-row items-center justify-between py-1.5 px-0.5 border-b border-white/5 active:opacity-60"
                     >
                         <Text className="text-xs font-semibold text-white/40 uppercase tracking-wider">
@@ -634,6 +638,7 @@ function TorrentSelectionStage(props: TorrentSelectionStageProps) {
                                     {searchAcrossProviders && (
                                         <Pressable
                                             onPress={() => onSelectStage("providers")}
+                                            focusable={isTV}
                                             className="flex-row items-center justify-between h-11 px-3.5 rounded-xl border border-white/10 bg-white/[0.04] active:bg-white/5 mt-0.5"
                                         >
                                             <Text className="text-sm font-medium text-white">
@@ -717,6 +722,7 @@ function TorrentSelectionStage(props: TorrentSelectionStageProps) {
                         onPress={() => onSelectTorrent(selectedTorrent?.infoHash === batchHistory.torrent?.infoHash
                             ? null
                             : batchHistory.torrent ?? null)}
+                        focusable={isTV}
                     >
                         <TorrentCard
                             torrent={batchHistory.torrent!}
@@ -731,7 +737,7 @@ function TorrentSelectionStage(props: TorrentSelectionStageProps) {
             <View className="gap-2">
                 <View className="flex-row justify-between items-center">
                     <FormSectionLabel>Releases</FormSectionLabel>
-                    <Pressable onPress={onRefetchSearch}>
+                    <Pressable onPress={onRefetchSearch} focusable={isTV}>
                         <Text className="text-xs font-semibold text-white/35">
                             Refresh
                         </Text>
@@ -835,6 +841,7 @@ type TorrentFileSelectionStageProps = {
 }
 
 function TorrentFileSelectionStage({ filePreviews, isLoading, onBack, selectedFileId, onSelectFileId, streamMode }: TorrentFileSelectionStageProps) {
+    const isTV = useIsTV()
     const previews = React.useMemo(() => {
         return [...(filePreviews ?? [])].sort((a, b) => Number(b.isLikely) - Number(a.isLikely))
     }, [filePreviews])
@@ -858,7 +865,7 @@ function TorrentFileSelectionStage({ filePreviews, isLoading, onBack, selectedFi
         <View className="gap-2.5">
             <View className="flex-row justify-between items-center">
                 <FormSectionLabel>File Selection</FormSectionLabel>
-                <Pressable onPress={onBack}>
+                <Pressable onPress={onBack} focusable={isTV}>
                     <Text className="text-xs font-semibold text-white/40">
                         Back to releases
                     </Text>
@@ -873,6 +880,7 @@ function TorrentFileSelectionStage({ filePreviews, isLoading, onBack, selectedFi
                         <Pressable
                             key={fileId}
                             onPress={() => onSelectFileId(fileId)}
+                            focusable={isTV}
                             className={cn(
                                 "rounded-2xl p-3.5 border gap-2",
                                 selected
@@ -913,6 +921,7 @@ function TorrentProviderSelectionStage({
     onSelectExtraProviderIds,
     onBack,
 }: TorrentProviderSelectionStageProps) {
+    const isTV = useIsTV()
     const [searchQuery, setSearchQuery] = React.useState("")
 
     const providerOptions = React.useMemo(
@@ -940,7 +949,7 @@ function TorrentProviderSelectionStage({
         <View className="gap-3">
             <View className="flex-row justify-between items-center">
                 <FormSectionLabel>Additional Providers</FormSectionLabel>
-                <Pressable onPress={onBack}>
+                <Pressable onPress={onBack} focusable={isTV}>
                     <Text className="text-xs font-semibold text-white/40">
                         Back to releases
                     </Text>
@@ -962,12 +971,14 @@ function TorrentProviderSelectionStage({
             <View className="flex-row gap-2">
                 <Pressable
                     onPress={handleSelectAll}
+                    focusable={isTV}
                     className="flex-1 h-9 items-center justify-center rounded-xl bg-white/5 border border-white/10 active:bg-white/10"
                 >
                     <Text className="text-xs font-semibold text-white/70">Select All</Text>
                 </Pressable>
                 <Pressable
                     onPress={handleClearAll}
+                    focusable={isTV}
                     className="flex-1 h-9 items-center justify-center rounded-xl bg-white/5 border border-white/10 active:bg-white/10"
                 >
                     <Text className="text-xs font-semibold text-white/70">Clear All</Text>
@@ -992,6 +1003,7 @@ function TorrentProviderSelectionStage({
                                         onSelectExtraProviderIds([...extraProviderIds, p.id])
                                     }
                                 }}
+                                focusable={isTV}
                                 className={cn(
                                     "rounded-2xl p-3.5 border flex-row justify-between items-center",
                                     isActive
@@ -1022,9 +1034,11 @@ function TorrentProviderSelectionStage({
 }
 
 function ChoiceChip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+    const isTV = useIsTV()
     return (
         <Pressable
             onPress={onPress}
+            focusable={isTV}
             className={cn(
                 "px-3.5 py-2 rounded-full border",
                 active ? "bg-indigo-500/60 border-indigo-500/80" : "bg-white/5 border-white/10",
