@@ -11,17 +11,16 @@ import {
 import { LabeledSwitch } from "@/components/shared/labeled-switch"
 import { NativeSelect, type NativeSelectOption } from "@/components/shared/native-select"
 import { SegmentedControl } from "@/components/shared/segmented-control"
-import { SheetFooter, SheetFooterButton } from "@/components/shared/sheet-footer"
-import { SeaBottomSheet } from "@/components/ui/bottom-sheet"
+import { SeaSideDrawer } from "@/components/ui/sea-side-drawer"
 import { FormSectionLabel } from "@/components/ui/form-field"
+import { TvFocusablePressable } from "@/components/ui/tv-focusable"
 import { useIsTV } from "@/hooks/use-device"
 import { copyOfflineLogTextToClipboard } from "@/lib/offline-logger"
 import { cn } from "@/lib/utils"
 import { toast } from "@/lib/utils/toast"
 import { Ionicons } from "@expo/vector-icons"
-import { BottomSheetTextInput } from "@gorhom/bottom-sheet"
 import * as React from "react"
-import { ActivityIndicator, Pressable, Text, View } from "react-native"
+import { ActivityIndicator, findNodeHandle, Pressable, Text, TextInput, View, useWindowDimensions } from "react-native"
 import { NONE_PROVIDER, TORRENT_RESOLUTIONS, TorrentResolution, TorrentSearchMode, TorrentSheetStage } from "./use-torrent-stream-controller"
 import type { StreamMode } from "./use-torrent-stream-controller"
 
@@ -68,6 +67,10 @@ type TorrentStreamPickerSheetProps = {
     torrentMetadataByInfoHash?: Record<string, Habari_Metadata | undefined>
     usePreviousBatch: boolean
     resolution: TorrentResolution
+    autoSelect: boolean
+    autoSelectFile: boolean
+    onToggleAutoSelect: () => void
+    onToggleAutoSelectFile: () => void
     mode?: "stream" | "download"
     onDownloadTorrent?: (torrent: HibikeTorrent_AnimeTorrent, smartSelect: boolean) => void
     onDownloadFile?: (torrent: HibikeTorrent_AnimeTorrent, fileId: string | null) => void
@@ -86,6 +89,7 @@ type TorrentStreamPickerSheetProps = {
 }
 
 export function TorrentStreamPickerSheet(props: TorrentStreamPickerSheetProps) {
+    const isTV = useIsTV()
     const {
         batchHistory,
         batchHistoryMetadata,
@@ -129,6 +133,10 @@ export function TorrentStreamPickerSheet(props: TorrentStreamPickerSheetProps) {
         torrentMetadataByInfoHash,
         usePreviousBatch,
         resolution,
+        autoSelect,
+        autoSelectFile,
+        onToggleAutoSelect,
+        onToggleAutoSelectFile,
         mode = "stream",
         onDownloadTorrent,
         onDownloadFile,
@@ -146,168 +154,19 @@ export function TorrentStreamPickerSheet(props: TorrentStreamPickerSheetProps) {
         onSelectEpisodeNumber,
     } = props
 
-    const primaryLabel = React.useMemo(() => {
-        if (pickerStage === "files") return "Stream selected file"
-        if (!selectedTorrent) return streamMode === "debrid" ? "Auto select via debrid" : "Auto select now"
-        if (selectedTorrent.isBatch) return "Choose file"
-        return "Start selected"
-    }, [pickerStage, selectedTorrent, streamMode])
-
-    const snapPoints = React.useMemo(() => ["72%", "92%"], [])
-
-    const footer = React.useMemo(() => {
-        if (mode === "download") {
-            const hasDebrid = streamMode === "debrid"
-            const label = hasDebrid ? "Download with Debrid" : "Download to Server"
-            const showPrimary = selectedTorrent && (pickerStage === "torrents" ? !selectedTorrent.isBatch : selectedFileId !== null)
-
-            return (
-                <SheetFooter className="flex-col gap-2">
-                    {destination !== undefined && onChangeDestination && (
-                        <View className="w-full gap-1 px-1 mb-1">
-                            <Text className="text-[10px] font-semibold text-white/35 uppercase tracking-wider">Destination Path</Text>
-                            <View className="h-10 flex-row items-center rounded-xl border border-white/10 bg-white/5 px-3">
-                                <BottomSheetTextInput
-                                    value={destination}
-                                    onChangeText={onChangeDestination}
-                                    placeholder="Destination directory"
-                                    placeholderTextColor="rgba(255,255,255,0.35)"
-                                    className="flex-1 py-0 text-xs text-foreground"
-                                    autoCorrect={false}
-                                    autoCapitalize="none"
-                                />
-                            </View>
-                        </View>
-                    )}
-                    {pickerStage === "torrents" && selectedTorrent?.isBatch && !hasDebrid && (
-                        <View className="flex-row gap-3 w-full">
-                            <SheetFooterButton
-                                variant="cancel"
-                                onPress={() => onDownloadTorrent?.(selectedTorrent, true)}
-                                disabled={isDownloading}
-                                className="bg-indigo-500/10 border border-indigo-500/25 active:bg-indigo-500/20"
-                            >
-                                <Text className="font-semibold text-indigo-400">Download Missing</Text>
-                            </SheetFooterButton>
-                            <SheetFooterButton
-                                variant="cancel"
-                                onPress={() => onDownloadTorrent?.(selectedTorrent, false)}
-                                disabled={isDownloading}
-                                className="bg-indigo-500/10 border border-indigo-500/25 active:bg-indigo-500/20"
-                            >
-                                <Text className="font-semibold text-indigo-400">Download Full</Text>
-                            </SheetFooterButton>
-                        </View>
-                    )}
-                    <View className="flex-row gap-3 w-full">
-                        <SheetFooterButton
-                            variant="cancel"
-                            onPress={() => onOpenChange(false)}
-                            disabled={isDownloading}
-                        >
-                            <Text className="font-medium text-foreground/70">Close</Text>
-                        </SheetFooterButton>
-                        {pickerStage === "torrents" && selectedTorrent?.isBatch ? (
-                            <SheetFooterButton
-                                variant="primary"
-                                onPress={onConfirmTorrentSelection}
-                                disabled={isDownloading}
-                            >
-                                <Text className="font-semibold text-primary-foreground">Choose File</Text>
-                            </SheetFooterButton>
-                        ) : (
-                            <SheetFooterButton
-                                variant="primary"
-                                onPress={() => {
-                                    if (pickerStage === "files") {
-                                        onDownloadFile?.(selectedTorrent!, selectedFileId)
-                                    } else {
-                                        onDownloadTorrent?.(selectedTorrent!, false)
-                                    }
-                                }}
-                                disabled={isDownloading || !showPrimary}
-                                className={!showPrimary ? "opacity-40" : undefined}
-                            >
-                                <Text className="font-semibold text-primary-foreground">
-                                    {isDownloading ? "Downloading..." : label}
-                                </Text>
-                            </SheetFooterButton>
-                        )}
-                    </View>
-                </SheetFooter>
-            )
-        }
-
-        if (pickerStage === "providers") {
-            return (
-                <SheetFooter>
-                    <SheetFooterButton
-                        variant="cancel"
-                        onPress={onBackToTorrentList}
-                    >
-                        <Text className="font-medium text-foreground/70">Back</Text>
-                    </SheetFooterButton>
-                    <SheetFooterButton
-                        variant="primary"
-                        onPress={onBackToTorrentList}
-                    >
-                        <Text className="font-semibold text-primary-foreground">Confirm</Text>
-                    </SheetFooterButton>
-                </SheetFooter>
-            )
-        }
-
-        return (
-            <SheetFooter>
-                <SheetFooterButton
-                    variant="cancel"
-                    onPress={() => onOpenChange(false)}
-                    disabled={isStarting}
-                >
-                    <Text className="font-medium text-foreground/70">Close</Text>
-                </SheetFooterButton>
-                <SheetFooterButton
-                    variant="primary"
-                    onPress={pickerStage === "files" ? onConfirmFileSelection : onConfirmTorrentSelection}
-                    disabled={
-                        isStarting ||
-                        !selectedEpisode ||
-                        (pickerStage === "files" && selectedFileId === null)
-                    }
-                >
-                    <Text className="font-semibold text-primary-foreground">
-                        {isStarting ? "Starting..." : primaryLabel}
-                    </Text>
-                </SheetFooterButton>
-            </SheetFooter>
-        )
-    }, [
-        mode,
-        streamMode,
-        pickerStage,
-        selectedTorrent,
-        selectedFileId,
-        isDownloading,
-        onDownloadTorrent,
-        onDownloadFile,
-        onOpenChange,
-        onConfirmTorrentSelection,
-        isStarting,
-        onConfirmFileSelection,
-        selectedEpisode,
-        primaryLabel,
-        destination,
-        onChangeDestination,
-    ])
+    const [headerActionTag, setHeaderActionTag] = React.useState<number | null>(null)
 
     return (
-        <SeaBottomSheet
+        <SeaSideDrawer
             title={selectedEpisode ? `Episode ${selectedEpisode.episodeNumber}` : streamMode === "debrid" ? "Select release" : "Select torrent"}
             open={open}
             onOpenChange={onOpenChange}
-            index={1}
-            snapPoints={snapPoints}
-            footer={footer}
+            headerAction={isTV ? (
+                <Pressable onPress={onRefetchSearch} focusable={isTV} className="pr-1">
+                    <Ionicons name="refresh" size={24} color="rgba(255,255,255,0.55)" />
+                </Pressable>
+            ) : undefined}
+            onHeaderActionLayout={setHeaderActionTag}
         >
             <View className="gap-4">
                 <View className="gap-1.5">
@@ -318,7 +177,15 @@ export function TorrentStreamPickerSheet(props: TorrentStreamPickerSheetProps) {
                     </Text>
                 </View>
 
-                {pickerStage === "torrents" ? (
+                {pickerStage === "providers" ? (
+                    <TorrentProviderSelectionStage
+                        providerExtensions={providerExtensions}
+                        extraProviderIds={extraProviderIds}
+                        selectedProviderId={selectedProviderId}
+                        onSelectExtraProviderIds={onSelectExtraProviderIds}
+                        onBack={onBackToTorrentList}
+                    />
+                ) : (
                     <TorrentSelectionStage
                         batchHistory={batchHistory}
                         batchHistoryMetadata={batchHistoryMetadata}
@@ -359,28 +226,28 @@ export function TorrentStreamPickerSheet(props: TorrentStreamPickerSheetProps) {
                         streamMode={streamMode}
                         selectedEpisode={selectedEpisode}
                         onSelectEpisodeNumber={onSelectEpisodeNumber}
+                        autoSelect={autoSelect}
+                        autoSelectFile={autoSelectFile}
+                        onToggleAutoSelect={onToggleAutoSelect}
+                        onToggleAutoSelectFile={onToggleAutoSelectFile}
                         mode={mode}
-                    />
-                ) : pickerStage === "providers" ? (
-                    <TorrentProviderSelectionStage
-                        providerExtensions={providerExtensions}
-                        extraProviderIds={extraProviderIds}
-                        selectedProviderId={selectedProviderId}
-                        onSelectExtraProviderIds={onSelectExtraProviderIds}
-                        onBack={onBackToTorrentList}
-                    />
-                ) : (
-                    <TorrentFileSelectionStage
-                        filePreviews={filePreviews}
-                        isLoading={isLoadingFilePreviews}
-                        onBack={onBackToTorrentList}
-                        selectedFileId={selectedFileId}
-                        onSelectFileId={onSelectFileId}
-                        streamMode={streamMode}
+                        headerActionTag={headerActionTag}
+                        onConfirmTorrentSelection={onConfirmTorrentSelection}
+                        rightColumnOverride={pickerStage === "files" ? (
+                            <TorrentFileSelectionStage
+                                filePreviews={filePreviews}
+                                isLoading={isLoadingFilePreviews}
+                                onBack={onBackToTorrentList}
+                                selectedFileId={selectedFileId}
+                                onSelectFileId={onSelectFileId}
+                                onConfirmFileSelection={onConfirmFileSelection}
+                                streamMode={streamMode}
+                            />
+                        ) : undefined}
                     />
                 )}
             </View>
-        </SeaBottomSheet>
+        </SeaSideDrawer>
     )
 }
 
@@ -424,12 +291,20 @@ type TorrentSelectionStageProps = {
     streamMode: StreamMode
     selectedEpisode: Anime_Episode | null
     onSelectEpisodeNumber?: (episodeNumber: number) => void
+    autoSelect: boolean
+    autoSelectFile: boolean
+    onToggleAutoSelect: () => void
+    onToggleAutoSelectFile: () => void
     mode?: "stream" | "download"
+    headerActionTag?: number | null
+    onConfirmTorrentSelection?: () => void
+    rightColumnOverride?: React.ReactNode
 }
 
 function TorrentSelectionStage(props: TorrentSelectionStageProps) {
     const isTV = useIsTV()
     const [isFiltersExpanded, setIsFiltersExpanded] = React.useState(false)
+    const [previousFocused, setPreviousFocused] = React.useState(false)
     const {
         batchHistory,
         batchHistoryMetadata,
@@ -454,12 +329,17 @@ function TorrentSelectionStage(props: TorrentSelectionStageProps) {
         selectedProvider,
         selectedProviderId,
         selectedTorrent,
+        headerActionTag,
         smartSearchBatch,
         smartSearchFilters,
         supportsSmartSearch,
         torrents,
         torrentMetadataByInfoHash,
         usePreviousBatch,
+        autoSelect,
+        autoSelectFile,
+        onToggleAutoSelect,
+        onToggleAutoSelectFile,
         searchAcrossProviders,
         onToggleSearchAcrossProviders,
         extraProviderIds,
@@ -471,6 +351,8 @@ function TorrentSelectionStage(props: TorrentSelectionStageProps) {
         selectedEpisode,
         onSelectEpisodeNumber,
         mode,
+        onConfirmTorrentSelection,
+        rightColumnOverride,
     } = props
 
     const providerOptions = React.useMemo(
@@ -478,39 +360,30 @@ function TorrentSelectionStage(props: TorrentSelectionStageProps) {
         [providerExtensions],
     )
 
-    const selectedProviderLabel = React.useMemo(() => {
-        if (selectedProviderId === NONE_PROVIDER) return "None"
-        return selectedProvider?.name ?? selectedProviderId
-    }, [selectedProvider, selectedProviderId])
-
-    const nativeProviderOptions = React.useMemo<NativeSelectOption[]>(
-        () => [
-            ...providerOptions.map(p => ({ id: p.id, label: p.name, sublabel: p.lang?.toUpperCase() ?? undefined })),
-            { id: NONE_PROVIDER, label: "None" },
-        ],
-        [providerOptions],
-    )
+    const headerUpTag = isTV ? (headerActionTag ?? undefined) : undefined
 
     const releaseCards = React.useMemo(() => {
         return torrents.map((torrent, index) => {
             const isSelected = selectedTorrent?.infoHash === torrent.infoHash && selectedTorrent?.downloadUrl === torrent.downloadUrl
 
             return (
-                <Pressable
+                <TorrentCardPressable
                     key={`${torrent.infoHash ?? torrent.downloadUrl}-${index}`}
-                    onPress={() => onSelectTorrent(isSelected ? null : torrent)}
-                    focusable={isTV}
-                >
-                    <TorrentCard
-                        torrent={torrent}
-                        episodes={episodes}
-                        metadata={torrent.infoHash ? torrentMetadataByInfoHash?.[torrent.infoHash] : undefined}
-                        isSelected={isSelected}
-                    />
-                </Pressable>
+                    torrent={torrent}
+                    index={index}
+                    isSelected={isSelected}
+                    episodes={episodes}
+                    torrentMetadataByInfoHash={torrentMetadataByInfoHash}
+                    onSelectTorrent={onSelectTorrent}
+                    onConfirmTorrentSelection={onConfirmTorrentSelection}
+                    autoSelectFile={autoSelectFile}
+                    onSelectStage={onSelectStage}
+                    nextFocusUp={index === 0 ? headerUpTag : undefined}
+                    blockDown={isTV && index === torrents.length - 1}
+                />
             )
         })
-    }, [episodes, onSelectTorrent, selectedTorrent?.downloadUrl, selectedTorrent?.infoHash, torrentMetadataByInfoHash, torrents])
+    }, [episodes, onSelectTorrent, onConfirmTorrentSelection, autoSelectFile, onSelectStage, selectedTorrent?.downloadUrl, selectedTorrent?.infoHash, torrentMetadataByInfoHash, torrents])
 
     const segmentedOptions = React.useMemo(() => [
         { value: "torrent", label: "Torrent Client" },
@@ -537,57 +410,108 @@ function TorrentSelectionStage(props: TorrentSelectionStageProps) {
         return count
     }, [searchAcrossProviders, searchMode, supportsSmartSearch, smartSearchBatch, smartSearchFilters, resolution, bestRelease])
 
-    return (
-        <View className="gap-4">
-            {mode === "download" && availableModes && availableModes.length > 1 && (
-                <SegmentedControl
-                    options={segmentedOptions}
-                    value={streamMode}
-                    onChange={(val) => onSelectStreamMode(val as StreamMode)}
-                />
-            )}
-            {episodeCollectionHasMappingError && (
-                <SurfaceMessage text="AniDB mapping is missing for this title. Manual torrent and file selection may be required." tone="warning" />
-            )}
+    const { width } = useWindowDimensions()
+    const isWideLayout = isTV || width >= 700
 
-            <View className="gap-3.5">
-                <View className="gap-1.5">
-                    <FormSectionLabel>Provider</FormSectionLabel>
+    const settingsColumn = (
+        <View className={cn("gap-3.5", isWideLayout && "flex-1 min-w-0")}>
+            <View className="gap-1.5">
+                <FormSectionLabel>Provider</FormSectionLabel>
                     {providerOptions.length === 0 ? (
                         <SurfaceMessage text="No provider extensions" tone="muted" />
                     ) : (
-                        <NativeSelect
-                            options={nativeProviderOptions}
-                            selectedId={selectedProviderId}
-                            onSelect={onSelectProvider}
-                            title="Select Provider"
-                        />
+                        <View className="gap-2">
+                            {providerOptions.map((p, idx) => {
+                                const isActive = p.id === selectedProviderId
+                                return (
+                                    <TvFocusablePressable
+                                        key={p.id}
+                                        onPress={() => onSelectProvider(p.id)}
+                                        hasTVPreferredFocus={isTV && idx === 0 && (!availableModes || availableModes.length <= 1)}
+                                        blockLeft={isTV}
+                                        blockUp={isTV && idx === 0}
+                                        className={cn(
+                                            "rounded-2xl p-3 border flex-row justify-between items-center",
+                                            isActive
+                                                ? "bg-indigo-500/15 border-indigo-400/30"
+                                                : "bg-white/5 border-white/10",
+                                        )}
+                                        focusedClassName="border border-brand-400/80 bg-white/10"
+                                    >
+                                        <View className="flex-1 gap-1">
+                                            <Text className="text-sm font-bold text-white" numberOfLines={1}>
+                                                {p.name}
+                                            </Text>
+                                            {!!p.lang && (
+                                                <Text className="text-[10px] text-white/35 uppercase">
+                                                    {p.lang}
+                                                </Text>
+                                            )}
+                                        </View>
+                                        {isActive && (
+                                            <Ionicons name="checkmark-circle" size={18} color="#a5b4fc" />
+                                        )}
+                                    </TvFocusablePressable>
+                                )
+                            })}
+                        </View>
                     )}
                 </View>
 
-                {selectedProviderId !== NONE_PROVIDER && (
-                    <LabeledSwitch
-                        label="Smart search"
-                        checked={searchMode === "smart"}
-                        onToggle={() => onSelectSearchMode(searchMode === "smart" ? "simple" : "smart")}
-                        disabled={!supportsSmartSearch}
-                        helper={supportsSmartSearch ? "Automated search based on given parameters." : "This provider does not support smart search."}
-                    />
-                )}
+            {selectedProviderId !== NONE_PROVIDER && (
+                <LabeledSwitch
+                    label="Smart search"
+                    checked={searchMode === "smart"}
+                    onToggle={() => onSelectSearchMode(searchMode === "smart" ? "simple" : "smart")}
+                    disabled={!supportsSmartSearch}
+                    helper={supportsSmartSearch ? "Automated search based on given parameters." : "This provider does not support smart search."}
+                    blockLeft={isTV}
+                />
+            )}
 
-                {selectedProviderId !== NONE_PROVIDER && searchMode === "smart" && mode !== "stream" && supportsSmartSearch && smartSearchFilters.includes(
-                    "episodeNumber") && onSelectEpisodeNumber && episodes.length > 0 && (
-                    <View className="gap-1.5">
-                        <FormSectionLabel>Episode</FormSectionLabel>
-                        <NativeSelect
-                            options={nativeEpisodeOptions}
-                            selectedId={selectedEpisode ? String(selectedEpisode.episodeNumber) : ""}
-                            onSelect={(id) => onSelectEpisodeNumber?.(Number(id))}
-                            title="Select Episode"
-                        />
-                    </View>
-                )}
-            </View>
+            {selectedProviderId !== NONE_PROVIDER && (
+                <LabeledSwitch
+                    label={streamMode === "debrid" ? "Auto-select debrid stream" : "Auto-select torrent"}
+                    checked={autoSelect}
+                    onToggle={onToggleAutoSelect}
+                    helper={streamMode === "debrid"
+                        ? "Automatically pick the best torrent and debrid file for the episode."
+                        : "Automatically pick the best torrent and file for the episode."}
+                    blockLeft={isTV}
+                />
+            )}
+
+            {selectedProviderId !== NONE_PROVIDER && !autoSelect && usePreviousBatch && (
+                <LabeledSwitch
+                    label="Reuse previous batch"
+                    checked={usePreviousBatch}
+                    onToggle={onToggleUsePreviousBatch}
+                    helper="Reuse the previously selected batch torrent for subsequent episodes when possible."
+                />
+            )}
+
+            {selectedProviderId !== NONE_PROVIDER && !autoSelect && !usePreviousBatch && (
+                <LabeledSwitch
+                    label="Auto-select file"
+                    checked={autoSelectFile}
+                    onToggle={onToggleAutoSelectFile}
+                    helper="Automatically select the matching file from batch torrents."
+                    blockLeft={isTV}
+                />
+            )}
+
+            {selectedProviderId !== NONE_PROVIDER && searchMode === "smart" && mode !== "stream" && supportsSmartSearch && smartSearchFilters.includes(
+                "episodeNumber") && onSelectEpisodeNumber && episodes.length > 0 && (
+                <View className="gap-1.5">
+                    <FormSectionLabel>Episode</FormSectionLabel>
+                    <NativeSelect
+                        options={nativeEpisodeOptions}
+                        selectedId={selectedEpisode ? String(selectedEpisode.episodeNumber) : ""}
+                        onSelect={(id) => onSelectEpisodeNumber?.(Number(id))}
+                        title="Select Episode"
+                    />
+                </View>
+            )}
 
             {selectedProviderId !== NONE_PROVIDER && (searchMode === "simple") && (
                 <View className="gap-2">
@@ -599,12 +523,13 @@ function TorrentSelectionStage(props: TorrentSelectionStageProps) {
                 </View>
             )}
 
-            {selectedProviderId !== NONE_PROVIDER && (
+            {false && selectedProviderId !== NONE_PROVIDER && (
                 <View className="gap-3">
-                    <Pressable
+                    <TvFocusablePressable
                         onPress={() => setIsFiltersExpanded(!isFiltersExpanded)}
-                        focusable={isTV}
+                        blockLeft={isTV}
                         className="flex-row items-center justify-between py-1.5 px-0.5 border-b border-white/5 active:opacity-60"
+                        focusedClassName="border-b border-brand-400/80"
                     >
                         <Text className="text-xs font-semibold text-white/40 uppercase tracking-wider">
                             Search Settings
@@ -623,7 +548,7 @@ function TorrentSelectionStage(props: TorrentSelectionStageProps) {
                                 color="rgba(255,255,255,0.4)"
                             />
                         </View>
-                    </Pressable>
+                    </TvFocusablePressable>
 
                     {isFiltersExpanded && (
                         <View className="gap-3.5 bg-white/[0.02] border border-white/5 rounded-2xl p-3.5">
@@ -709,7 +634,11 @@ function TorrentSelectionStage(props: TorrentSelectionStageProps) {
                     )}
                 </View>
             )}
+        </View>
+    )
 
+    const releasesColumn = (
+        <View className={cn("gap-2", isWideLayout && "flex-[2] min-w-0")}>
             {!!batchHistory?.torrent && (
                 <View className="gap-2">
                     <View className="flex-row justify-between items-center">
@@ -723,26 +652,22 @@ function TorrentSelectionStage(props: TorrentSelectionStageProps) {
                             ? null
                             : batchHistory.torrent ?? null)}
                         focusable={isTV}
+                        onFocus={() => setPreviousFocused(true)}
+                        onBlur={() => setPreviousFocused(false)}
                     >
                         <TorrentCard
                             torrent={batchHistory.torrent!}
                             episodes={episodes}
                             metadata={batchHistoryMetadata}
                             isSelected={selectedTorrent?.infoHash === batchHistory.torrent?.infoHash}
+                            isFocused={previousFocused}
                         />
                     </Pressable>
                 </View>
             )}
 
             <View className="gap-2">
-                <View className="flex-row justify-between items-center">
-                    <FormSectionLabel>Releases</FormSectionLabel>
-                    <Pressable onPress={onRefetchSearch} focusable={isTV}>
-                        <Text className="text-xs font-semibold text-white/35">
-                            Refresh
-                        </Text>
-                    </Pressable>
-                </View>
+                <FormSectionLabel>Releases</FormSectionLabel>
 
                 {selectedProviderId === NONE_PROVIDER ? (
                     <SurfaceMessage text="Select a provider to search for torrents." tone="muted" />
@@ -760,6 +685,36 @@ function TorrentSelectionStage(props: TorrentSelectionStageProps) {
                     <View className="gap-2.5">{releaseCards}</View>
                 )}
             </View>
+        </View>
+    )
+
+    return (
+        <View className="gap-4">
+            {availableModes && availableModes.length > 1 && (
+                <SegmentedControl
+                    options={segmentedOptions}
+                    value={streamMode}
+                    onChange={(val) => onSelectStreamMode(val as StreamMode)}
+                    hasTVPreferredFocus={isTV}
+                />
+            )}
+            {episodeCollectionHasMappingError && (
+                <SurfaceMessage text="AniDB mapping is missing for this title. Manual torrent and file selection may be required." tone="warning" />
+            )}
+
+            {isWideLayout ? (
+                <View className="flex-row gap-5">
+                    {settingsColumn}
+                    {rightColumnOverride ? (
+                        <View className="flex-[2] min-w-0 gap-2">{rightColumnOverride}</View>
+                    ) : releasesColumn}
+                </View>
+            ) : (
+                <>
+                    {settingsColumn}
+                    {rightColumnOverride ?? releasesColumn}
+                </>
+            )}
         </View>
     )
 }
@@ -814,7 +769,7 @@ function TorrentSearchQueryField({
 
     return (
         <View className="h-11 flex-row items-center rounded-2xl border border-white/10 bg-white/5 px-4">
-            <BottomSheetTextInput
+            <TextInput
                 value={draftValue}
                 onChangeText={setDraftValue}
                 onFocus={handleFocus}
@@ -837,11 +792,13 @@ type TorrentFileSelectionStageProps = {
     onBack: () => void
     selectedFileId: string | null
     onSelectFileId: (fileId: string) => void
+    onConfirmFileSelection?: () => void
     streamMode: StreamMode
 }
 
-function TorrentFileSelectionStage({ filePreviews, isLoading, onBack, selectedFileId, onSelectFileId, streamMode }: TorrentFileSelectionStageProps) {
+function TorrentFileSelectionStage({ filePreviews, isLoading, onBack, selectedFileId, onSelectFileId, onConfirmFileSelection, streamMode }: TorrentFileSelectionStageProps) {
     const isTV = useIsTV()
+    const [focusedFileId, setFocusedFileId] = React.useState<string | null>(null)
     const previews = React.useMemo(() => {
         return [...(filePreviews ?? [])].sort((a, b) => Number(b.isLikely) - Number(a.isLikely))
     }, [filePreviews])
@@ -873,19 +830,26 @@ function TorrentFileSelectionStage({ filePreviews, isLoading, onBack, selectedFi
             </View>
 
             <View className="gap-2.5">
-                {previews.map(file => {
+                {previews.map((file, fileIndex) => {
                     const fileId = getFileSelectionValue(file)
                     const selected = selectedFileId === fileId
                     return (
                         <Pressable
                             key={fileId}
-                            onPress={() => onSelectFileId(fileId)}
+                            onPress={() => {
+                                onSelectFileId(fileId)
+                                setTimeout(() => onConfirmFileSelection?.(), 0)
+                            }}
+                            onFocus={() => setFocusedFileId(fileId)}
+                            onBlur={() => setFocusedFileId(null)}
                             focusable={isTV}
+                            hasTVPreferredFocus={isTV && fileIndex === 0 ? true : undefined}
                             className={cn(
                                 "rounded-2xl p-3.5 border gap-2",
                                 selected
                                     ? "bg-indigo-500/15 border-indigo-400/30"
                                     : "bg-white/5 border-white/10",
+                                focusedFileId === fileId && "border-brand-400/80",
                             )}
                         >
                             <View className="flex-row justify-between items-center gap-2.5">
@@ -957,7 +921,7 @@ function TorrentProviderSelectionStage({
             </View>
 
             <View className="h-11 flex-row items-center rounded-2xl border border-white/10 bg-white/5 px-4">
-                <BottomSheetTextInput
+                <TextInput
                     value={searchQuery}
                     onChangeText={setSearchQuery}
                     placeholder="Filter providers..."
@@ -1273,16 +1237,85 @@ function formatProviderName(provider?: string) {
     return provider.charAt(0).toUpperCase() + provider.slice(1)
 }
 
+function TorrentCardPressable({ torrent, index, isSelected, episodes, torrentMetadataByInfoHash, onSelectTorrent, onConfirmTorrentSelection, autoSelectFile, onSelectStage, nextFocusUp, blockDown }: {
+    torrent: HibikeTorrent_AnimeTorrent
+    index: number
+    isSelected: boolean
+    episodes: Anime_Episode[]
+    torrentMetadataByInfoHash?: Record<string, Habari_Metadata | undefined>
+    onSelectTorrent: (torrent: HibikeTorrent_AnimeTorrent | null) => void
+    onConfirmTorrentSelection?: () => void
+    autoSelectFile?: boolean
+    onSelectStage?: (stage: "torrents" | "files" | "providers") => void
+    nextFocusUp?: number
+    blockDown?: boolean
+}) {
+    const isTV = useIsTV()
+    const [focused, setFocused] = React.useState(false)
+    const pressableRef = React.useRef<React.ComponentRef<typeof Pressable>>(null)
+    const [selfTag, setSelfTag] = React.useState<number | null>(null)
+    const tagResolved = React.useRef(false)
+
+    const handleLayout = React.useCallback(() => {
+        if (!isTV || tagResolved.current) return
+        const node = pressableRef.current
+        if (node) {
+            const tag = findNodeHandle(node)
+            if (tag !== null) {
+                setSelfTag(tag)
+                tagResolved.current = true
+            }
+        }
+    }, [isTV])
+
+    const handlePress = React.useCallback(() => {
+        onSelectTorrent(isSelected ? null : torrent)
+        if (!isSelected) {
+            setTimeout(() => {
+                if (autoSelectFile) {
+                    onConfirmTorrentSelection?.()
+                } else {
+                    onSelectStage?.("files")
+                }
+            }, 0)
+        }
+    }, [torrent, isSelected, onSelectTorrent, onConfirmTorrentSelection, autoSelectFile, onSelectStage])
+
+    return (
+        <Pressable
+            ref={pressableRef}
+            onPress={handlePress}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            onLayout={handleLayout}
+            focusable={isTV}
+            nextFocusUp={nextFocusUp}
+            nextFocusRight={isTV && selfTag ? selfTag : undefined}
+            nextFocusDown={blockDown && selfTag ? selfTag : undefined}
+        >
+            <TorrentCard
+                torrent={torrent}
+                episodes={episodes}
+                metadata={torrent.infoHash ? torrentMetadataByInfoHash?.[torrent.infoHash] : undefined}
+                isSelected={isSelected}
+                isFocused={focused}
+            />
+        </Pressable>
+    )
+}
+
 function TorrentCard({
     torrent,
     episodes,
     metadata,
     isSelected,
+    isFocused,
 }: {
     torrent: HibikeTorrent_AnimeTorrent
     episodes: Anime_Episode[]
     metadata?: Habari_Metadata
     isSelected: boolean
+    isFocused?: boolean
 }) {
     const cardTitle = React.useMemo(() => getTorrentCardTitle(torrent, metadata, episodes), [episodes, torrent, metadata])
     const displayReleaseGroup = metadata?.release_group || torrent.releaseGroup || ""
@@ -1297,6 +1330,7 @@ function TorrentCard({
             className={cn(
                 "rounded-2xl border overflow-hidden relative bg-[#0f0f0f]",
                 isSelected ? "border-white/30 bg-[#1f1f1f]" : "border-white/10",
+                isFocused && "border-brand-400/80",
             )}
         >
             <View className="p-3 relative z-10 gap-1">
