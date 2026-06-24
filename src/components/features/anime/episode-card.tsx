@@ -1,11 +1,10 @@
 import { SeaImage } from "@/components/shared/sea-image"
+import { TvFocusablePressable } from "@/components/ui/tv-focusable"
 import * as React from "react"
-import { Dimensions, Platform, Pressable, Text, View } from "react-native"
-import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated"
+import { Dimensions, Text, View } from "react-native"
 
 const { width } = Dimensions.get("screen")
 const CARD_WIDTH = (3 / 4) * width
-const isTV = Platform.isTV
 
 type EpisodeCardProps = {
     cardWidth?: number
@@ -22,14 +21,19 @@ type EpisodeCardProps = {
     animeTitle?: string
     onFocus?: (e: any) => void
     onBlur?: (e: any) => void
-    /**
-     * tvOS focus chain: when this card sits at the leftmost position of
-     * its row, DPAD LEFT should jump straight to the sidebar. Forwarded
-     * to the underlying Pressable so RN TV's focus engine honors it.
-     */
-    nextFocusLeft?: number
 }
 
+/**
+ * Uses the project's canonical {@link TvFocusablePressable} instead of a
+ * raw React Native `Pressable`. The canonical wrapper defaults
+ * `focusable` to `true` when no prop is passed — explicit pass-through
+ * of `focusable={Platform.isTV}` was avoided because some non-certified
+ * Android TV hardware returns `Platform.isTV === false`, which would
+ * leave cards completely unfocusable. TvFocusable also provides the
+ * Reanimated scale animation that the raw wrapper was hand-rolling;
+ * the inner poster border and title color still react to focus via the
+ * local `isFocused` state so the visual highlight survives.
+ */
 export const EpisodeCard = React.memo(function EpisodeCard(props: EpisodeCardProps) {
     const {
         cardWidth = CARD_WIDTH,
@@ -46,107 +50,88 @@ export const EpisodeCard = React.memo(function EpisodeCard(props: EpisodeCardPro
         animeTitle,
         onFocus: externalOnFocus,
         onBlur: externalOnBlur,
-        nextFocusLeft,
     } = props
 
     const [isFocused, setIsFocused] = React.useState(false)
-    const scale = useSharedValue(1)
-
-    const animatedStyle = useAnimatedStyle(() => ({
-        transform: [{ scale: scale.value }],
-    }))
-
-    function handleFocus() {
-        setIsFocused(true)
-        scale.set(withTiming(1.05, { duration: 150 }))
-    }
-
-    function handleBlur() {
-        setIsFocused(false)
-        scale.set(withTiming(1, { duration: 150 }))
-    }
-
-    function handlePressIn() {
-        if (!isFocused) {
-            scale.set(withTiming(0.96, { duration: 100 }))
-        }
-    }
-
-    function handlePressOut() {
-        scale.set(withTiming(isFocused ? 1.05 : 1, { duration: 150 }))
-    }
 
     return (
-        <Pressable
+        <TvFocusablePressable
             onPress={disabled ? undefined : onPress}
             disabled={disabled || !onPress}
-            focusable={isTV}
-            onFocus={isTV ? ((e: any) => { handleFocus(); externalOnFocus?.(e) }) : externalOnFocus}
-            onBlur={isTV ? ((e: any) => { handleBlur(); externalOnBlur?.(e) }) : externalOnBlur}
-            onPressIn={handlePressIn}
-            onPressOut={handlePressOut}
-            {...(nextFocusLeft !== undefined ? { nextFocusLeft } : {})}
+            onFocus={(e: any) => {
+                setIsFocused(true)
+                externalOnFocus?.(e)
+            }}
+            onBlur={(e: any) => {
+                setIsFocused(false)
+                externalOnBlur?.(e)
+            }}
+            scaleTo={1.05}
+            // TvFocusable's default `focusedClassName` adds a brand border
+            // around the whole card; we already style the inner poster
+            // border when focused, so suppress the wrapper one to avoid
+            // visual duplication.
+            focusedClassName=""
+            style={{ width: cardWidth }}
         >
-            <Animated.View style={[{ width: cardWidth }, animatedStyle]}>
-                <View
-                    style={{ borderRadius: 12, overflow: "hidden" }}
-                    className={[
-                        "relative mb-2 border-2",
-                        isFocused ? "border-brand-400 shadow-2xl" : "border-transparent",
-                    ].join(" ")}
-                >
-                    <SeaImage
-                        source={{ uri: image }}
-                        style={{ width: "100%", aspectRatio: 16 / 9 }}
-                        contentFit="cover"
-                        transition={120}
-                        blurRadius={imageBlurred ? 18 : 0}
-                    />
-                    {!!progressPercent && progressPercent > 0 && (
-                        <View className="absolute bottom-0 left-0 right-0 h-[3px] bg-white/10 rounded-b-xl overflow-hidden">
-                            <View
-                                className="h-full bg-brand-400 rounded-bl-xl"
-                                style={{ width: `${Math.min(progressPercent, 100)}%` }}
-                            />
-                        </View>
-                    )}
-                    {thumbnailOverlay}
-                </View>
-
-                <Text
-                    numberOfLines={1}
-                    ellipsizeMode="tail"
-                    className={[
-                        "text-lg tracking-tight font-semibold mb-1",
-                        isFocused ? "text-brand-300" : "text-foreground",
-                    ].join(" ")}
-                >
-                    {title}
-                </Text>
-
-                <View className="flex flex-row justify-between items-center">
-                    <View className="flex flex-row flex-1 mr-2">
-                        <Text
-                            className={isFocused ? "text-brand-300/80" : "text-foreground"}
-                            numberOfLines={1}
-                        >
-                            Episode {episodeNumber}
-                            {totalEpisodes && (
-                                <Text className="text-muted-foreground">
-                                    /{totalEpisodes}
-                                </Text>
-                            )}
-                            {animeTitle && (
-                                <Text className="text-muted-foreground">
-                                    {` - ${animeTitle}`}
-                                </Text>
-                            )}
-                        </Text>
+            <View
+                style={{ borderRadius: 12, overflow: "hidden" }}
+                className={[
+                    "relative mb-2 border-2",
+                    isFocused ? "border-brand-400 shadow-2xl" : "border-transparent",
+                ].join(" ")}
+            >
+                <SeaImage
+                    source={{ uri: image }}
+                    style={{ width: "100%", aspectRatio: 16 / 9 }}
+                    contentFit="cover"
+                    transition={120}
+                    blurRadius={imageBlurred ? 18 : 0}
+                />
+                {!!progressPercent && progressPercent > 0 && (
+                    <View className="absolute bottom-0 left-0 right-0 h-[3px] bg-white/10 rounded-b-xl overflow-hidden">
+                        <View
+                            className="h-full bg-brand-400 rounded-bl-xl"
+                            style={{ width: `${Math.min(progressPercent, 100)}%` }}
+                        />
                     </View>
+                )}
+                {thumbnailOverlay}
+            </View>
 
-                    {length && <Text className="text-muted-foreground shrink-0">{length}m</Text>}
+            <Text
+                numberOfLines={1}
+                ellipsizeMode="tail"
+                className={[
+                    "text-lg tracking-tight font-semibold mb-1",
+                    isFocused ? "text-brand-300" : "text-foreground",
+                ].join(" ")}
+            >
+                {title}
+            </Text>
+
+            <View className="flex flex-row justify-between items-center">
+                <View className="flex flex-row flex-1 mr-2">
+                    <Text
+                        className={isFocused ? "text-brand-300/80" : "text-foreground"}
+                        numberOfLines={1}
+                    >
+                        Episode {episodeNumber}
+                        {totalEpisodes && (
+                            <Text className="text-muted-foreground">
+                                /{totalEpisodes}
+                            </Text>
+                        )}
+                        {animeTitle && (
+                            <Text className="text-muted-foreground">
+                                {` - ${animeTitle}`}
+                            </Text>
+                        )}
+                    </Text>
                 </View>
-            </Animated.View>
-        </Pressable>
+
+                {length && <Text className="text-muted-foreground shrink-0">{length}m</Text>}
+            </View>
+        </TvFocusablePressable>
     )
 })

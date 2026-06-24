@@ -388,6 +388,85 @@ function DiscoverHorizontalSection({
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+// Snap offset hook
+///////////////////////////////////////////////////////////////////////////////
+
+const ESTIMATED_SECTION_HEIGHT = DISCOVER_SECTION_HEADER_HEIGHT + DISCOVER_CARD_ROW_HEIGHT
+const ESTIMATED_HEADER_HEIGHT = HERO_HEIGHT + 60
+
+function useDiscoverSnapOffsets(sectionCount: number) {
+    const headerHeightRef = React.useRef(ESTIMATED_HEADER_HEIGHT)
+    const sectionHeightsRef = React.useRef<number[]>(new Array(sectionCount).fill(ESTIMATED_SECTION_HEIGHT))
+    const viewportHeightRef = React.useRef(0)
+    const [snapOffsets, setSnapOffsets] = React.useState<number[]>([0])
+
+    const getHeight = React.useCallback((index: number) => {
+        const measured = sectionHeightsRef.current[index]
+        return measured > 0 ? measured : ESTIMATED_SECTION_HEIGHT
+    }, [])
+
+    const recompute = React.useCallback(() => {
+        const hh = headerHeightRef.current
+        const vh = viewportHeightRef.current
+
+        if (vh === 0 || hh === 0) return
+
+        const offsets: number[] = [0]
+        let accHeight = hh
+
+        offsets.push(accHeight)
+
+        for (let i = 1; i < sectionCount; i++) {
+            accHeight += getHeight(i - 1)
+            const centerOffset = accHeight - Math.max(0, (vh - getHeight(i)) / 2)
+            offsets.push(Math.max(0, centerOffset))
+        }
+
+        let totalContentHeight = hh
+        for (let i = 0; i < sectionCount; i++) {
+            totalContentHeight += getHeight(i)
+        }
+        const maxOffset = Math.max(0, totalContentHeight - vh)
+        if (offsets.length > 1) {
+            offsets[offsets.length - 1] = Math.min(offsets[offsets.length - 1], maxOffset)
+        }
+
+        setSnapOffsets(offsets)
+    }, [sectionCount, getHeight])
+
+    const onHeaderLayout = React.useCallback((e: { nativeEvent: { layout: { height: number } } }) => {
+        const h = e.nativeEvent.layout.height
+        if (h > 0 && h !== headerHeightRef.current) {
+            headerHeightRef.current = h
+            recompute()
+        }
+    }, [recompute])
+
+    const onSectionLayout = React.useCallback((index: number) => (e: { nativeEvent: { layout: { height: number } } }) => {
+        const h = e.nativeEvent.layout.height
+        if (h > 0 && h !== sectionHeightsRef.current[index]) {
+            const newHeights = [...sectionHeightsRef.current]
+            newHeights[index] = h
+            sectionHeightsRef.current = newHeights
+            recompute()
+        }
+    }, [recompute])
+
+    const onViewportLayout = React.useCallback((e: { nativeEvent: { layout: { height: number } } }) => {
+        const h = e.nativeEvent.layout.height
+        if (h > 0 && h !== viewportHeightRef.current) {
+            viewportHeightRef.current = h
+            recompute()
+        }
+    }, [recompute])
+
+    const snapOffsetsRef = React.useRef(snapOffsets)
+    snapOffsetsRef.current = snapOffsets
+
+    return { snapOffsets, onHeaderLayout, onSectionLayout, onViewportLayout, snapOffsetsRef }
+}
+
+///////////////////////////////////////////////////////////////////////////////
 // Anime sections
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -439,6 +518,7 @@ function DiscoverAnimeSections({
         ],
         [],
     )
+    const { snapOffsets, onHeaderLayout, onSectionLayout, onViewportLayout, snapOffsetsRef } = useDiscoverSnapOffsets(DISCOVER_ANIME_SECTION_ITEMS.length)
     const scrollRef = React.useRef<React.ElementRef<typeof Animated.FlatList<DiscoverAnimeSectionItem>>>(null)
     const lastFocusedSection = React.useRef<number | null>(null)
     const handleCarouselFocus = React.useCallback(() => {
@@ -448,123 +528,132 @@ function DiscoverAnimeSections({
         if (sectionIndex === DISCOVER_ANIME_SECTION_ITEMS.length - 1) return
         if (lastFocusedSection.current === sectionIndex) return
         lastFocusedSection.current = sectionIndex
-            scrollRef.current?.scrollToIndex({ index: sectionIndex, animated: true, viewPosition: 0.5 })
+        const offsets = snapOffsetsRef.current
+        const target = offsets[sectionIndex + 1]
+        if (target !== undefined) {
+            scrollRef.current?.scrollToOffset({ offset: target, animated: true })
+        }
     }, [])
     const listHeader = React.useMemo(() => (
-        <DiscoverListHeader
-            mode="anime"
-            heroMedia={heroMedia}
-            heroLoading={heroLoading}
-            heroController={heroController}
-            onChangeMode={onChangeMode}
-            onCarouselFocus={handleCarouselFocus}
-        />
-    ), [heroController, heroLoading, heroMedia, onChangeMode, handleCarouselFocus])
+        <View onLayout={onHeaderLayout}>
+            <DiscoverListHeader
+                mode="anime"
+                heroMedia={heroMedia}
+                heroLoading={heroLoading}
+                heroController={heroController}
+                onChangeMode={onChangeMode}
+                onCarouselFocus={handleCarouselFocus}
+            />
+        </View>
+    ), [heroController, heroLoading, heroMedia, onChangeMode, handleCarouselFocus, onHeaderLayout])
     const keyExtractor = React.useCallback((item: DiscoverAnimeSectionItem) => item.key, [])
-    const renderSectionItem = React.useCallback(({ item }: { item: DiscoverAnimeSectionItem }) => {
-            switch (item.key) {
-                case "trending":
-                    return (
-                        <View>
-                            <MediaGenreSelector
-                                options={trendingGenreOptions}
-                                value={selectedTrendingGenre}
-                                onChange={onChangeTrendingGenre}
-                            />
+    const renderSectionItem = React.useCallback(({ item, index }: { item: DiscoverAnimeSectionItem, index: number }) => {
+            const content = (() => {
+                switch (item.key) {
+                    case "trending":
+                        return (
+                            <View>
+                                <MediaGenreSelector
+                                    options={trendingGenreOptions}
+                                    value={selectedTrendingGenre}
+                                    onChange={onChangeTrendingGenre}
+                                />
+                                <DiscoverHorizontalSection
+                                    title="Trending Right Now"
+                                    type="anime"
+                                    enabled={trendingEnabled}
+                                    isLoading={trendingLoading}
+                                    sectionIndex={0}
+                                    media={trendingMedia}
+                                    onMediaPress={(m) => router.push(`/(app)/entry/anime/${m.id}`)}
+                                    showAudienceScore
+                                    hideCount
+                                    onCardFocus={handleCardFocus}
+                                />
+                            </View>
+                        )
+                    case "current-season":
+                        return (
                             <DiscoverHorizontalSection
-                                title="Trending Right Now"
+                                title={`Top of ${getCurrentSeasonLabel()}`}
                                 type="anime"
-                                enabled={trendingEnabled}
-                                isLoading={trendingLoading}
-                                sectionIndex={0}
-                                media={trendingMedia}
+                                enabled={currentSeasonEnabled}
+                                isLoading={currentSeasonLoading}
+                                sectionIndex={1}
+                                media={currentSeasonMedia}
                                 onMediaPress={(m) => router.push(`/(app)/entry/anime/${m.id}`)}
                                 showAudienceScore
                                 hideCount
                                 onCardFocus={handleCardFocus}
                             />
-                        </View>
-                    )
-                case "current-season":
-                    return (
-                        <DiscoverHorizontalSection
-                            title={`Top of ${getCurrentSeasonLabel()}`}
-                            type="anime"
-                            enabled={currentSeasonEnabled}
-                            isLoading={currentSeasonLoading}
-                            sectionIndex={1}
-                            media={currentSeasonMedia}
-                            onMediaPress={(m) => router.push(`/(app)/entry/anime/${m.id}`)}
-                            showAudienceScore
-                            hideCount
-                            onCardFocus={handleCardFocus}
-                        />
-                    )
-                case "past-season":
-                    return (
-                        <DiscoverHorizontalSection
-                            title={`Best of ${getPreviousSeasonLabel()}`}
-                            type="anime"
-                            enabled={pastSeasonEnabled}
-                            isLoading={pastSeasonLoading}
-                            sectionIndex={2}
-                            media={pastSeasonMedia}
-                            onMediaPress={(m) => router.push(`/(app)/entry/anime/${m.id}`)}
-                            showAudienceScore
-                            hideCount
-                            onCardFocus={handleCardFocus}
-                        />
-                    )
-                case "upcoming":
-                    return (
-                        <DiscoverHorizontalSection
-                            title="Coming Soon"
-                            type="anime"
-                            enabled={upcomingEnabled}
-                            isLoading={upcomingLoading}
-                            sectionIndex={3}
-                            media={upcomingMedia}
-                            onMediaPress={(m) => router.push(`/(app)/entry/anime/${m.id}`)}
-                            showAudienceScore
-                            hideCount
-                            onCardFocus={handleCardFocus}
-                        />
-                    )
-                case "movies":
-                    return (
-                        <DiscoverHorizontalSection
-                            title="Trending Movies"
-                            type="anime"
-                            enabled={moviesEnabled}
-                            isLoading={moviesLoading}
-                            sectionIndex={4}
-                            media={moviesMedia}
-                            onMediaPress={(m) => router.push(`/(app)/entry/anime/${m.id}`)}
-                            showAudienceScore
-                            hideCount
-                            onCardFocus={handleCardFocus}
-                        />
-                    )
-                case "missed":
-                    return (
-                        <DiscoverHorizontalSection
-                            title="You Might Have Missed"
-                            type="anime"
-                            enabled={missedEnabled}
-                            isLoading={missedLoading}
-                            sectionIndex={5}
-                            media={missedMedia}
-                            onMediaPress={(m) => router.push(`/(app)/entry/anime/${m.id}`)}
-                            showAudienceScore
-                            hideCount
-                            onCardFocus={handleCardFocus}
-                        />
-                    )
-            }
+                        )
+                    case "past-season":
+                        return (
+                            <DiscoverHorizontalSection
+                                title={`Best of ${getPreviousSeasonLabel()}`}
+                                type="anime"
+                                enabled={pastSeasonEnabled}
+                                isLoading={pastSeasonLoading}
+                                sectionIndex={2}
+                                media={pastSeasonMedia}
+                                onMediaPress={(m) => router.push(`/(app)/entry/anime/${m.id}`)}
+                                showAudienceScore
+                                hideCount
+                                onCardFocus={handleCardFocus}
+                            />
+                        )
+                    case "upcoming":
+                        return (
+                            <DiscoverHorizontalSection
+                                title="Coming Soon"
+                                type="anime"
+                                enabled={upcomingEnabled}
+                                isLoading={upcomingLoading}
+                                sectionIndex={3}
+                                media={upcomingMedia}
+                                onMediaPress={(m) => router.push(`/(app)/entry/anime/${m.id}`)}
+                                showAudienceScore
+                                hideCount
+                                onCardFocus={handleCardFocus}
+                            />
+                        )
+                    case "movies":
+                        return (
+                            <DiscoverHorizontalSection
+                                title="Trending Movies"
+                                type="anime"
+                                enabled={moviesEnabled}
+                                isLoading={moviesLoading}
+                                sectionIndex={4}
+                                media={moviesMedia}
+                                onMediaPress={(m) => router.push(`/(app)/entry/anime/${m.id}`)}
+                                showAudienceScore
+                                hideCount
+                                onCardFocus={handleCardFocus}
+                            />
+                        )
+                    case "missed":
+                        return (
+                            <DiscoverHorizontalSection
+                                title="You Might Have Missed"
+                                type="anime"
+                                enabled={missedEnabled}
+                                isLoading={missedLoading}
+                                sectionIndex={5}
+                                media={missedMedia}
+                                onMediaPress={(m) => router.push(`/(app)/entry/anime/${m.id}`)}
+                                showAudienceScore
+                                hideCount
+                                onCardFocus={handleCardFocus}
+                            />
+                        )
+                }
+            })()
+            return <View onLayout={onSectionLayout(index)}>{content}</View>
         },
         [currentSeasonEnabled, currentSeasonLoading, currentSeasonMedia, missedEnabled, missedLoading, missedMedia, moviesEnabled, moviesLoading,
             moviesMedia, onChangeTrendingGenre, pastSeasonEnabled, pastSeasonLoading, pastSeasonMedia, selectedTrendingGenre, trendingEnabled,
-            trendingGenreOptions, trendingLoading, trendingMedia, upcomingEnabled, upcomingLoading, upcomingMedia, handleCardFocus])
+            trendingGenreOptions, trendingLoading, trendingMedia, upcomingEnabled, upcomingLoading, upcomingMedia, handleCardFocus, onSectionLayout])
 
     return (
         <Animated.FlatList
@@ -584,6 +673,10 @@ function DiscoverAnimeSections({
             showsVerticalScrollIndicator={false}
             scrollEventThrottle={16}
             contentContainerStyle={{ paddingBottom: isTV ? 0 : 100 }}
+            onLayout={onViewportLayout}
+            snapToOffsets={snapOffsets.length > 1 ? snapOffsets : undefined}
+            snapToAlignment="start"
+            decelerationRate="fast"
         />
     )
 }
@@ -617,6 +710,7 @@ function DiscoverMangaSections({
     const jpMedia = mangaJP?.Page?.media?.filter(Boolean) ?? []
     const krMedia = manhwaKR?.Page?.media?.filter(Boolean) ?? []
     const cnMedia = manhuaCN?.Page?.media?.filter(Boolean) ?? []
+    const { snapOffsets, onHeaderLayout, onSectionLayout, onViewportLayout, snapOffsetsRef } = useDiscoverSnapOffsets(DISCOVER_MANGA_SECTION_ITEMS.length)
     const scrollRef = React.useRef<React.ElementRef<typeof Animated.FlatList<DiscoverMangaSectionItem>>>(null)
     const lastFocusedSection = React.useRef<number | null>(null)
     const handleCarouselFocus = React.useCallback(() => {
@@ -626,62 +720,71 @@ function DiscoverMangaSections({
         if (sectionIndex === DISCOVER_MANGA_SECTION_ITEMS.length - 1) return
         if (lastFocusedSection.current === sectionIndex) return
         lastFocusedSection.current = sectionIndex
-            scrollRef.current?.scrollToIndex({ index: sectionIndex, animated: true, viewPosition: 0.5 })
+        const offsets = snapOffsetsRef.current
+        const target = offsets[sectionIndex + 1]
+        if (target !== undefined) {
+            scrollRef.current?.scrollToOffset({ offset: target, animated: true })
+        }
     }, [])
     const listHeader = React.useMemo(() => (
-        <DiscoverListHeader
-            mode="manga"
-            heroMedia={heroMedia}
-            heroLoading={heroLoading}
-            heroController={heroController}
-            onChangeMode={onChangeMode}
-            onCarouselFocus={handleCarouselFocus}
-        />
-    ), [heroController, heroLoading, heroMedia, onChangeMode, handleCarouselFocus])
+        <View onLayout={onHeaderLayout}>
+            <DiscoverListHeader
+                mode="manga"
+                heroMedia={heroMedia}
+                heroLoading={heroLoading}
+                heroController={heroController}
+                onChangeMode={onChangeMode}
+                onCarouselFocus={handleCarouselFocus}
+            />
+        </View>
+    ), [heroController, heroLoading, heroMedia, onChangeMode, handleCarouselFocus, onHeaderLayout])
     const keyExtractor = React.useCallback((item: DiscoverMangaSectionItem) => item.key, [])
-    const renderSectionItem = React.useCallback(({ item }: { item: DiscoverMangaSectionItem }) => {
-        switch (item.key) {
-            case "jp":
-                return (
-                    <DiscoverHorizontalSection
-                        title="Trending Manga"
-                        type="manga"
-                        enabled={jpEnabled}
-                        isLoading={mangaJPLoading}
-                        sectionIndex={0}
-                        media={jpMedia}
-                        onMediaPress={(m) => router.push(`/(app)/entry/manga/${m.id}`)}
-                        onCardFocus={handleCardFocus}
-                    />
-                )
-            case "kr":
-                return (
-                    <DiscoverHorizontalSection
-                        title="Trending Manhwa"
-                        type="manga"
-                        enabled={krEnabled}
-                        isLoading={manhwaKRLoading}
-                        sectionIndex={1}
-                        media={krMedia}
-                        onMediaPress={(m) => router.push(`/(app)/entry/manga/${m.id}`)}
-                        onCardFocus={handleCardFocus}
-                    />
-                )
-            case "cn":
-                return (
-                    <DiscoverHorizontalSection
-                        title="Trending Manhua"
-                        type="manga"
-                        enabled={cnEnabled}
-                        isLoading={manhuaCNLoading}
-                        sectionIndex={2}
-                        media={cnMedia}
-                        onMediaPress={(m) => router.push(`/(app)/entry/manga/${m.id}`)}
-                        onCardFocus={handleCardFocus}
-                    />
-                )
-        }
-    }, [cnEnabled, cnMedia, jpEnabled, jpMedia, krEnabled, krMedia, manhuaCNLoading, manhwaKRLoading, handleCardFocus])
+    const renderSectionItem = React.useCallback(({ item, index }: { item: DiscoverMangaSectionItem, index: number }) => {
+        const content = (() => {
+            switch (item.key) {
+                case "jp":
+                    return (
+                        <DiscoverHorizontalSection
+                            title="Trending Manga"
+                            type="manga"
+                            enabled={jpEnabled}
+                            isLoading={mangaJPLoading}
+                            sectionIndex={0}
+                            media={jpMedia}
+                            onMediaPress={(m) => router.push(`/(app)/entry/manga/${m.id}`)}
+                            onCardFocus={handleCardFocus}
+                        />
+                    )
+                case "kr":
+                    return (
+                        <DiscoverHorizontalSection
+                            title="Trending Manhwa"
+                            type="manga"
+                            enabled={krEnabled}
+                            isLoading={manhwaKRLoading}
+                            sectionIndex={1}
+                            media={krMedia}
+                            onMediaPress={(m) => router.push(`/(app)/entry/manga/${m.id}`)}
+                            onCardFocus={handleCardFocus}
+                        />
+                    )
+                case "cn":
+                    return (
+                        <DiscoverHorizontalSection
+                            title="Trending Manhua"
+                            type="manga"
+                            enabled={cnEnabled}
+                            isLoading={manhuaCNLoading}
+                            sectionIndex={2}
+                            media={cnMedia}
+                            onMediaPress={(m) => router.push(`/(app)/entry/manga/${m.id}`)}
+                            onCardFocus={handleCardFocus}
+                        />
+                    )
+            }
+        })()
+        return <View onLayout={onSectionLayout(index)}>{content}</View>
+    }, [cnEnabled, cnMedia, jpEnabled, jpMedia, krEnabled, krMedia, manhuaCNLoading, manhwaKRLoading, handleCardFocus, onSectionLayout])
 
     return (
         <Animated.FlatList
@@ -701,6 +804,10 @@ function DiscoverMangaSections({
             showsVerticalScrollIndicator={false}
             scrollEventThrottle={16}
             contentContainerStyle={{ paddingBottom: isTV ? 0 : 100 }}
+            onLayout={onViewportLayout}
+            snapToOffsets={snapOffsets.length > 1 ? snapOffsets : undefined}
+            snapToAlignment="start"
+            decelerationRate="fast"
         />
     )
 }

@@ -57,18 +57,14 @@ export function ContinueWatching(props: ContinueWatchingProps) {
     if (isLoading || !episodes?.length) return null
 
     return (
-        <Animated.View
-            className="space-y-4"
-        >
-            <EpisodeCardList
-                title="Continue watching"
-                episodes={episodes}
-                onEpisodePress={handleEpisodePress}
-                watchHistory={watchHistory}
-                spoilerActive={continueWatchingSpoilerActive}
-                showAnimeTitle
-                cardWidth={180}
-            />
-        </Animated.View>
+        <EpisodeCardList
+            title="Continue watching"
+            episodes={episodes}
+            onEpisodePress={handleEpisodePress}
+            watchHistory={watchHistory}
+            spoilerActive={continueWatchingSpoilerActive}
+            showAnimeTitle
+            cardWidth={180}
+        />
     )
 }

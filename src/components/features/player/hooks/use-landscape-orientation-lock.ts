@@ -2,7 +2,7 @@ import { MpvPlayerModule } from "expo-mpv-player"
 import * as ScreenOrientation from "expo-screen-orientation"
 import { Accelerometer } from "expo-sensors"
 import React from "react"
-import { AppState, InteractionManager, Platform } from "react-native"
+import { AppState, Platform } from "react-native"
 
 type UseLandscapeOrientationLockParams = {
     restoreLock?: ScreenOrientation.OrientationLock
@@ -92,9 +92,9 @@ export function useLandscapeOrientationLock({
 
             if (Platform.OS === "android") {
                 requestAnimationFrame(() => {
-                    InteractionManager.runAfterInteractions(() => {
+                    setTimeout(() => {
                         void ScreenOrientation.lockAsync(restoreLock)
-                    })
+                    }, 0)
                 })
                 return
             }

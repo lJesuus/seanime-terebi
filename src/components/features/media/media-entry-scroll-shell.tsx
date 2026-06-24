@@ -46,7 +46,7 @@ export function MediaEntryScrollShell({
     const scrollY = sharedScrollY ?? localScrollY
     const scrollViewRef = React.useRef<ScrollView>(null)
 
-    useIOSScrollRefreshRateWorkaround(true)
+    useIOSScrollRefreshRateWorkaround()
 
     const onScroll = useAnimatedScrollHandler({
         onScroll: event => {

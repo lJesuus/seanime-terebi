@@ -3,7 +3,7 @@ import { useGetContinuityWatchHistory } from "@/api/hooks/continuity.hooks"
 import { animeEntryPlaybackIntentAtom, createAnimeEntryPlaybackIntent } from "@/atoms/anime-entry.atoms"
 import { useServerUrl } from "@/atoms/server.atoms"
 import { NEXT_EPISODE_CONFIRM_PROGRESS_THRESHOLD, NEXT_EPISODE_CONFIRM_REMAINING_SECONDS } from "@/components/features/player/constants"
-import { clamp, formatTime, getChapterAtTime, getFillZoomScale, getSourceVideoAspectRatio } from "@/components/features/player/helpers"
+import { clamp, formatTime, getBackPanel, getChapterAtTime, getFillZoomScale, getSourceVideoAspectRatio } from "@/components/features/player/helpers"
 import { useAutoNextEpisode } from "@/components/features/player/hooks/use-auto-next-episode"
 import { useControlsVisibility } from "@/components/features/player/hooks/use-controls-visibility"
 import { useDoubleTapSeek } from "@/components/features/player/hooks/use-double-tap-seek"
@@ -33,7 +33,6 @@ import { usePlayerPreferences } from "@/lib/player/player-preferences"
 import type { MobilePlaybackSource } from "@/lib/player/types"
 import { useContinuitySync } from "@/lib/player/use-continuity-sync"
 import { useMpvPlayer } from "@/lib/player/use-mpv-player"
-import { useIsTV } from "@/hooks/use-device"
 import { cn } from "@/lib/utils"
 import { toast } from "@/lib/utils/toast"
 import { useKeepAwake } from "expo-keep-awake"
@@ -43,7 +42,7 @@ import { useRouter } from "expo-router"
 import { useAtom, useAtomValue } from "jotai/react"
 import { SkipForward } from "lucide-react-native"
 import React from "react"
-import { ActivityIndicator, Dimensions, Platform, Pressable, StatusBar, Text, useWindowDimensions, View } from "react-native"
+import { ActivityIndicator, BackHandler, Dimensions, Keyboard, Platform, Pressable, StatusBar, Text, useWindowDimensions, View } from "react-native"
 import { Gesture, GestureDetector, GestureHandlerRootView } from "react-native-gesture-handler"
 import Animated, { FadeIn, FadeOut, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
@@ -78,7 +77,6 @@ function PlayerScreenInner() {
     const IOS_SUBTITLE_CROP_ADJUSTMENT_FACTOR = 0.7
 
     const { back, canGoBack, replace } = useRouter()
-    const isTV = useIsTV()
     const rawInsets = useSafeAreaInsets()
     const insets = React.useMemo(() => {
         if (Platform.OS === "android") {
@@ -101,12 +99,15 @@ function PlayerScreenInner() {
     useLandscapeOrientationLock()
 
     React.useEffect(() => {
-        if (Platform.OS === "android") {
+        // Skip NavigationBar config on Android TV: `setBehaviorAsync`
+        // logs `is not supported with edge-to edge enabled` and the nav
+        // bar is not displayed on TV targets.
+        if (Platform.OS === "android" && !Platform.isTV) {
             void NavigationBar.setVisibilityAsync("hidden")
             void NavigationBar.setBehaviorAsync("overlay-swipe")
         }
         return () => {
-            if (Platform.OS === "android") {
+            if (Platform.OS === "android" && !Platform.isTV) {
                 void NavigationBar.setVisibilityAsync("visible")
                 void NavigationBar.setBehaviorAsync("overlay-swipe")
             }
@@ -253,10 +254,17 @@ function PlayerScreenInner() {
 
     // settings panel
     const [panel, setPanel] = React.useState<PlayerPanel | null>(null)
+    // NOTE: do NOT call `controls.scheduleHide()` synchronously here. With
+    // the hook now gating scheduleHide on `panel != null`, a synchronous
+    // call would no-op (gRef.current.panel still reads as "open" before
+    // setPanel(null) commits). Instead, a post-commit useEffect below
+    // kicks the standard idle-hide cycle AFTER React has rendered
+    // `panel = null`. This keeps the controls bar visible so the
+    // Settings button stays in the tree and focusable for RN TV's
+    // native `hasTVPreferredFocus` resolution when the panel unmounts.
     const closeSettings = React.useCallback(() => {
         setPanel(null)
-        controls.scheduleHide()
-    }, [controls.scheduleHide])
+    }, [])
 
     // sync gRef every render
     syncGestureRef(gRef, {
@@ -286,6 +294,7 @@ function PlayerScreenInner() {
     // seek bar
     const barWidthRef = React.useRef(300)
     const [seekBarWidth, setSeekBarWidth] = React.useState(0)
+    const settingsBtnRef = React.useRef<React.ComponentRef<typeof Pressable>>(null)
     const seekBarWidthValue = useSharedValue(0)
     const seekBarProgress = useSharedValue(0)
     const seekBarThumbScale = useSharedValue(1)
@@ -738,6 +747,101 @@ function PlayerScreenInner() {
         setNextEpisodePrompt(null)
     }, [source?.id])
 
+    // ──────────────────────────────────────────────────────────────────────
+    // Track software keyboard state so the BackHandler can distinguish
+    // "dismiss keyboard" from "navigate back". When the keyboard closes,
+    // `keyboardDismissedRef` flips to true synchronously (no timer).
+    // The BackHandler then consumes the event without navigating.
+    // ──────────────────────────────────────────────────────────────────────
+    const keyboardDismissedRef = React.useRef(false)
+    React.useEffect(() => {
+        const sub = Keyboard.addListener("keyboardDidHide", () => {
+            keyboardDismissedRef.current = true
+        })
+        return () => sub.remove()
+    }, [])
+
+    // ──────────────────────────────────────────────────────────────────────
+    // Hardware BACK on Android TV must close the open settings/lock overlay
+    // first, not pop the player route. Registered AFTER the root listener
+    // in app/(app)/(tabs)/_layout.tsx, so it runs first (LIFO); returning
+    // true here consumes the event before the root level sees it.
+    // ──────────────────────────────────────────────────────────────────────
+    const panelForBackRef = React.useRef<PlayerPanel | null>(null)
+    const controlsLockedForBackRef = React.useRef<boolean>(false)
+    panelForBackRef.current = panel
+    controlsLockedForBackRef.current = controls.controlsLocked
+
+    React.useEffect(() => {
+        const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+            // If the soft keyboard just closed via this Back press,
+            // consume the event but stay on the current panel.
+            if (keyboardDismissedRef.current) {
+                keyboardDismissedRef.current = false
+                return true
+            }
+            if (panelForBackRef.current) {
+                // Navigate back through panel hierarchy (e.g. speed → main)
+                // before closing the drawer entirely.
+                const backPanel = getBackPanel(panelForBackRef.current)
+                if (backPanel !== null) {
+                    setPanel(backPanel)
+                } else {
+                    closeSettings()
+                }
+                return true
+            }
+            if (controlsLockedForBackRef.current) {
+                controls.handleUnlockScreen()
+                return true
+            }
+            return false
+        })
+        return () => sub.remove()
+    }, [closeSettings, controls.handleUnlockScreen])
+
+    // ──────────────────────────────────────────────────────────────────────
+    // React to the close transition of the settings drawer. This single
+    // effect intentionally drives TWO post-close concerns — both share
+    // the same `non-null → null` panel transition:
+    //
+    //   1. Flag the Settings button with `hasTVPreferredFocus` so RN TV's
+    //      native focus engine resolves focus to it naturally once the
+    //      panel's focused row unmounts (no imperative .focus() call).
+    //      The `onSettingsFocused` callback clears the flag once focus
+    //      lands, preventing re-claim later.
+    //
+    //   2. Kick the standard idle-hide cycle. The hook now suspends
+    //      scheduleHide while `panel != null`, so running it from this
+    //      effect — after React has committed `panel = null` — is
+    //      the correct, post-commit kick-off point.
+    // ──────────────────────────────────────────────────────────────────────
+    const prevPanelRef = React.useRef<PlayerPanel | null>(null)
+    // ── Option D: hasTVPreferredFocus-based focus return ──
+    // When the settings drawer closes, we flag the Settings button
+    // with `hasTVPreferredFocus` instead of calling .focus() imperatively.
+    // RN TV's native focus engine then resolves focus to the Settings
+    // button naturally once the panel's focused row unmounts.
+    const [shouldFocusSettings, setShouldFocusSettings] = React.useState(false)
+    const handleSettingsFocused = React.useCallback(() => {
+        setShouldFocusSettings(false)
+    }, [])
+    // ────────────────────────────────────────────────────────────
+    React.useEffect(() => {
+        const prev = prevPanelRef.current
+        prevPanelRef.current = panel
+        if (prev !== null && panel === null) {
+            setShouldFocusSettings(true)
+            controls.scheduleHide()
+        }
+        // When the panel is opened, clear any stale preferred-focus flag
+        // so the Settings button doesn't compete with panel rows that
+        // carry their own `hasTVPreferredFocus`.
+        if (prev === null && panel !== null) {
+            setShouldFocusSettings(false)
+        }
+    }, [panel, controls.scheduleHide])
+
     function handleManualNextEpisode() {
         if (!source || !canPlayNext) return
         autoNext.cancelAutoNext()
@@ -808,12 +912,16 @@ function PlayerScreenInner() {
     }
 
     function handleStartPiP() {
+        // withPiPSupport plugin was removed during the platform prune — iOS
+        // Picture-in-Picture is no longer shipped. The Android TV PiP path is
+        // driven natively by MpvPlayerView via onPictureInPictureChange,
+        // so this helper is intentionally a no-op until an Android-TV
+        // PiP toggle is wired up.
         controls.clearHideTimer()
         setPanel(null)
         controls.setControlsVisible(false)
         setIsFastForwarding(false)
         setCenterTapFeedback(null)
-        requestAnimationFrame(() => { requestAnimationFrame(() => { player.startPiP() }) })
     }
 
     // display calculations
@@ -877,7 +985,7 @@ function PlayerScreenInner() {
                 <StatusBar hidden />
                 <Text className="text-red-400 text-lg font-semibold mb-2">Playback Error</Text>
                 <Text className="text-white/70 text-center mb-6">{error}</Text>
-                <Pressable focusable={isTV} onPress={handleBack} className="bg-white/10 px-6 py-3 rounded-xl">
+                <Pressable focusable={true} onPress={handleBack} className="bg-white/10 px-6 py-3 rounded-xl">
                     <Text className="text-white font-medium">Go Back</Text>
                 </Pressable>
             </View>
@@ -908,18 +1016,20 @@ function PlayerScreenInner() {
 
                 <Pressable
                     style={{ flex: 1, width: "100%", height: "100%", position: "relative", justifyContent: "center" }}
-                    focusable={isTV}
-                    hasTVPreferredFocus={isTV}
+                    focusable={true}
+                    // Intentionally no `hasTVPreferredFocus` — the outer
+                    // wrapper is just an event catcher, not a real focus
+                    // target. If it ever claims focus back (when the focused
+                    // row unmounts and there's no other preferred target),
+                    // soft DPAD / OK presses can't reach the controls bar.
                     onPress={() => {
-                        if (isTV) {
-                            if (!controls.controlsVisible) {
-                                controls.showControls()
-                            } else {
-                                player.togglePlayPause()
-                            }
+                        if (!controls.controlsVisible) {
+                            controls.showControls()
+                        } else {
+                            player.togglePlayPause()
                         }
                     }}
-                    {...(isTV ? {
+                    {...({
                         onKeyDown: (e: any) => {
                             const key = e.nativeEvent?.key ?? e.nativeEvent?.eventType
                             if (!key) return
@@ -930,19 +1040,29 @@ function PlayerScreenInner() {
                                 } else {
                                     player.togglePlayPause()
                                 }
+                            // Single DPAD LEFT/RIGHT press seeks by the touch
+                            // double-tap amount so a TV single press matches
+                            // the mobile double-tap semantics. Holding the
+                            // d-pad generates repeat events so continuous
+                            // seek works for free.
                             } else if (key === "DPAD_LEFT" || key === "Rewind" || key === "SeekBackward") {
                                 if (!controls.controlsVisible) {
-                                    player.seekRelative(-prefs.buttonSeekSec)
+                                    player.seekRelative(-prefs.doubleTapSeekSec)
                                 }
                             } else if (key === "DPAD_RIGHT" || key === "FastForward" || key === "SeekForward") {
                                 if (!controls.controlsVisible) {
-                                    player.seekRelative(prefs.buttonSeekSec)
+                                    player.seekRelative(prefs.doubleTapSeekSec)
                                 }
                             } else if (key === "DPAD_UP" || key === "DPAD_DOWN") {
                                 controls.showControls()
                             } else if (key === "Back" || key === "Escape" || key === "TVBack") {
                                 if (panel) {
-                                    closeSettings()
+                                    const backPanel = getBackPanel(panel)
+                                    if (backPanel !== null) {
+                                        setPanel(backPanel)
+                                    } else {
+                                        closeSettings()
+                                    }
                                 } else if (controls.controlsLocked) {
                                     controls.handleUnlockScreen()
                                 } else {
@@ -964,8 +1084,8 @@ function PlayerScreenInner() {
                                     controls.showControls()
                                 }
                             }
-                        }
-                    } : {})}
+                        },
+                    } as any)}
                 >
                     <MpvPlayerView
                         ref={player.viewRef}
@@ -994,6 +1114,7 @@ function PlayerScreenInner() {
                 <GestureDetector gesture={screenGesture}>
                     <Animated.View
                         collapsable={false}
+                        pointerEvents={panel ? "none" : "auto"}
                         style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
                     />
                 </GestureDetector>
@@ -1042,6 +1163,10 @@ function PlayerScreenInner() {
                         onLockScreen={controls.lockScreen}
                         onSeekRelative={player.seekRelative}
                         buttonSeekSec={prefs.buttonSeekSec}
+                        doubleTapSeekSec={prefs.doubleTapSeekSec}
+                        settingsBtnRef={settingsBtnRef}
+                        shouldFocusSettings={shouldFocusSettings}
+                        onSettingsFocused={handleSettingsFocused}
                     />
                 )}
 
@@ -1087,7 +1212,7 @@ function PlayerScreenInner() {
                         }}
                     >
                         <Pressable
-                            focusable={isTV}
+                            focusable={true}
                             onPress={() => {
                                 const targetTime = showSkipIntro ? skipData.op!.interval.endTime : skipData.ed!.interval.endTime
                                 playerSeekTo(targetTime)
@@ -1123,7 +1248,7 @@ function PlayerScreenInner() {
                     />
                 )}
 
-                {!isPiPActive && (
+                {!isPiPActive && doubleTap.doubleTapAmount > 0 && (
                     <DoubleTapFlash
                         side={doubleTap.doubleTapSide}
                         amount={doubleTap.doubleTapAmount}
@@ -1174,7 +1299,6 @@ function PlayerScreenInner() {
                         anilistId={source?.mediaId}
                         wyzieApiKey={prefs.wyzieApiKey}
                         onSaveWyzieApiKey={(value) => updatePrefs({ wyzieApiKey: value })}
-                        onStartPiP={handleStartPiP}
                         onToggleAutoNext={() => updatePrefs({ autoNextEpisode: !prefs.autoNextEpisode })}
                         onToggleCenterTapPlayPause={() => updatePrefs({ centerTapPlayPause: !prefs.centerTapPlayPause })}
                         onToggleSideSwipeControls={() => updatePrefs({ sideSwipeBrightnessVolume: !prefs.sideSwipeBrightnessVolume })}

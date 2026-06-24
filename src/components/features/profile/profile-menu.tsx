@@ -2,7 +2,6 @@ import { RowDivider } from "@/components/shared/row-divider"
 import { Surface } from "@/components/shared/surface"
 import { FormSectionLabel } from "@/components/ui/form-field"
 import { Switch } from "@/components/ui/switch"
-import { useIsTV } from "@/hooks/use-device"
 import { cn } from "@/lib/utils"
 import { Ionicons } from "@expo/vector-icons"
 import { router } from "expo-router"
@@ -42,21 +41,18 @@ export function ProfileMenuItem({
     onFocus?: () => void
     onBlur?: () => void
 }) {
-    const isTV = useIsTV()
     const scale = useSharedValue(1)
 
     React.useEffect(() => {
-        if (isTV) {
-            scale.set(withTiming(isFocused ? 1.03 : 1, { duration: 150 }))
-        }
-    }, [isFocused, isTV, scale])
+        scale.set(withTiming(isFocused ? 1.03 : 1, { duration: 150 }))
+    }, [isFocused, scale])
 
     const animatedStyle = useAnimatedStyle(() => ({
         transform: [{ scale: scale.value }],
     }))
 
     const content = (
-        <Animated.View style={isTV ? animatedStyle : undefined}>
+        <Animated.View style={animatedStyle}>
             <Ionicons name={icon} size={20} color="rgba(255,255,255,0.6)" />
             <View className="ml-3 flex-1">
                 <Text className="text-foreground text-sm font-medium">{label}</Text>
@@ -72,17 +68,6 @@ export function ProfileMenuItem({
             {!hideChevron && <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.25)" />}
         </Animated.View>
     )
-
-    if (!isTV) {
-        return (
-            <Pressable
-                className="flex-row items-center px-4 py-3.5 active:opacity-70"
-                onPress={onPress}
-            >
-                {content}
-            </Pressable>
-        )
-    }
 
     return (
         <Pressable
@@ -119,21 +104,18 @@ export function ProfileMenuToggle({
     onFocus?: () => void
     onBlur?: () => void
 }) {
-    const isTV = useIsTV()
     const scale = useSharedValue(1)
 
     React.useEffect(() => {
-        if (isTV) {
-            scale.set(withTiming(isFocused ? 1.03 : 1, { duration: 150 }))
-        }
-    }, [isFocused, isTV, scale])
+        scale.set(withTiming(isFocused ? 1.03 : 1, { duration: 150 }))
+    }, [isFocused, scale])
 
     const animatedStyle = useAnimatedStyle(() => ({
         transform: [{ scale: scale.value }],
     }))
 
     const content = (
-        <Animated.View className="flex-row items-center flex-1" style={isTV ? animatedStyle : undefined}>
+        <Animated.View className="flex-row items-center flex-1" style={animatedStyle}>
             <Ionicons name={icon} size={20} color="rgba(255,255,255,0.6)" />
             <View className="ml-3 flex-1">
                 <Text className="text-foreground text-sm font-medium">{label}</Text>
@@ -144,14 +126,6 @@ export function ProfileMenuToggle({
             <Switch checked={value} onCheckedChange={onToggle} />
         </Animated.View>
     )
-
-    if (!isTV) {
-        return (
-            <View className="flex-row items-center px-4 py-3.5">
-                {content}
-            </View>
-        )
-    }
 
     return (
         <Pressable
@@ -176,7 +150,6 @@ export function ProfileSubpageHeader({
     title: string
     detail?: string
 }) {
-    const isTV = useIsTV()
     const [isFocused, setIsFocused] = React.useState(false)
 
     return (
@@ -184,12 +157,12 @@ export function ProfileSubpageHeader({
             <Pressable
                 onPress={() => router.back()}
                 hitSlop={12}
-                focusable={isTV}
+                focusable={true}
                 onFocus={() => setIsFocused(true)}
                 onBlur={() => setIsFocused(false)}
                 className={cn(
                     "p-1 rounded-lg",
-                    isFocused && isTV && "border border-brand-400/60 bg-white/[0.04]",
+                    isFocused && "border border-brand-400/60 bg-white/[0.04]",
                 )}
             >
                 <Ionicons name="chevron-back" size={24} color="white" />

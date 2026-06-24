@@ -1,6 +1,5 @@
 import { AL_BaseAnime, AL_BaseManga } from "@/api/generated/types"
 import { __media_listPageContentAtom } from "@/atoms/media-list"
-import { TVFocusContext } from "@/contexts/tv-focus-context"
 import { MediaEntryCard } from "@/components/features/media/media-entry-card"
 import { Button } from "@/components/ui/button"
 import { Text } from "@/components/ui/text"
@@ -102,12 +101,6 @@ function SeeAllButton({
 }
 
     const { onFocus: notifyShelfFocusIn, onBlur: notifyShelfFocusOut } = useLibraryShelvesFocus()
-    const { sidebarTag } = React.useContext(TVFocusContext)
-    // When the user is focused on the leftmost card of this shelf, DPAD
-    // LEFT should jump straight to the sidebar. Other cards in the row use
-    // RN TV's native horizontal scroll focus search to find their way to
-    // the first card, at which point this chain takes over.
-    const firstCardNextFocusLeft = sidebarTag ?? undefined
 
     const handleFocus = React.useCallback(() => {
         onCardFocus?.(sectionIndex ?? 0)
@@ -137,9 +130,6 @@ function SeeAllButton({
             )
         }
 
-        const isFirstCard = index === 0
-        const cardFocusLeft = isFirstCard ? firstCardNextFocusLeft : undefined
-
         const itemType = getMediaEntryKind(item, type)
 
         if (itemType === "manga") {
@@ -156,7 +146,6 @@ function SeeAllButton({
                 hideLibraryBadge={hideLibraryBadge}
                 onFocus={handleFocus}
                 onBlur={handleBlur}
-                nextFocusLeft={cardFocusLeft}
             />
         }
 
@@ -173,15 +162,14 @@ function SeeAllButton({
             hideLibraryBadge={hideLibraryBadge}
             onFocus={handleFocus}
             onBlur={handleBlur}
-            nextFocusLeft={cardFocusLeft}
         />
-    }, [infiniteScroll, limit, media, onMediaPress, setMediaListPageContent, showAudienceScore, title, type, hideLibraryBadge, handleFocus, handleBlur, firstCardNextFocusLeft])
+    }, [infiniteScroll, limit, media, onMediaPress, setMediaListPageContent, showAudienceScore, title, type, hideLibraryBadge, handleFocus, handleBlur])
 
     if (media.length === 0) return null
 
     return (
         <View
-            className={cn("flex-col", compact ? "gap-0" : "gap-4")}
+            className={cn("flex-col", compact ? "gap-0" : "gap-2")}
         >
 
             <View
@@ -190,7 +178,7 @@ function SeeAllButton({
                 >
                 <Text
                     className={cn("font-bold text-foreground", isTV ? (compact ? "text-xl" : "text-2xl") : "text-xl")}
-                    style={{ paddingVertical: compact ? 0 : (isTV ? 24 : 16) }}
+                    style={{ paddingVertical: compact ? 0 : (isTV ? 12 : 8) }}
                 >
                     {title} {!hideCount && <Text className={cn("text-muted-foreground ml-4", isTV && !compact ? "text-2xl" : "text-xl")}>{media.length}</Text>}
                 </Text>

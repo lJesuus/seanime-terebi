@@ -1,4 +1,3 @@
-import { useIsTV } from "@/hooks/use-device"
 import { NAV_THEME } from "@/lib/constants"
 import BottomSheet, { BottomSheetBackdrop, type BottomSheetBackdropProps, BottomSheetScrollView } from "@gorhom/bottom-sheet"
 import { Portal } from "@rn-primitives/portal"
@@ -38,17 +37,15 @@ export function SeaBottomSheet({
     const id = useId()
     const bottomSheetRef = useRef<BottomSheet>(null)
     const insets = useSafeAreaInsets()
-    const isTV = useIsTV()
 
     // BACK key closes the sheet (TV remote)
     useEffect(() => {
         if (!open) return
-        const onBackPress = () => {
+        const sub = BackHandler.addEventListener("hardwareBackPress", () => {
             onOpenChange(false)
             return true
-        }
-        BackHandler.addEventListener("hardwareBackPress", onBackPress)
-        return () => BackHandler.removeEventListener("hardwareBackPress", onBackPress)
+        })
+        return () => sub.remove()
     }, [open, onOpenChange])
 
     const snapPoints = useMemo(() => _snapPoints, [_snapPoints])
@@ -87,8 +84,8 @@ export function SeaBottomSheet({
                         ref={bottomSheetRef}
                         index={index}
                         snapPoints={snapPoints}
-                        accessible={isTV ? true : undefined}
-                        accessibilityViewIsModal={isTV ? true : undefined}
+                        accessible
+                        accessibilityViewIsModal
                         enableContentPanningGesture={enableContentPanningGesture}
                         enableHandlePanningGesture={enableHandlePanningGesture}
                         enablePanDownToClose={enablePanDownToClose}

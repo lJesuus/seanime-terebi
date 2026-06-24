@@ -5,19 +5,18 @@ import { SeaImage } from "@/components/shared/sea-image"
 import { COLORS } from "@/constants/colors"
 import { ContinueWatchingItem } from "@/hooks/use-anime-library-collection"
 import { useShowSidebar } from "@/hooks/use-device"
-import { TVFocusContext } from "@/contexts/tv-focus-context"
-import { cn } from "@/lib/utils"
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { LinearGradient } from "expo-linear-gradient"
 import { router } from "expo-router"
 import { useAtomValue } from "jotai"
 import * as React from "react"
-import { InteractionManager, Platform, Pressable, ScrollView, Text, useWindowDimensions, View } from "react-native"
+import { Pressable, ScrollView, Text, useWindowDimensions, View } from "react-native"
 import Animated, {
     Extrapolation,
     interpolate,
     runOnJS,
     SharedValue,
+    useAnimatedRef,
     useAnimatedScrollHandler,
     useAnimatedStyle,
     useSharedValue,
@@ -73,6 +72,14 @@ export type LibraryHeroCarouselProps = {
     isFocused: boolean
     scrollY: SharedValue<number>
     onWatchPress?: (item: ContinueWatchingItem) => void
+    /**
+     * Vertical share of the screen consumed by the hero banner. Defaults
+     * to 0.6 (60 % of the screen) for the manga tab — a tall billboard
+     * with an action button at the bottom-left. Set lower (e.g. 0.35 in
+     * the anime library page) when the hero must coexist with the
+     * Continue Watching row + first shelf in the initial viewport.
+     */
+    heightRatio?: number
 }
 
 export function LibraryHeroCarousel({
@@ -82,13 +89,12 @@ export function LibraryHeroCarousel({
     isFocused,
     scrollY,
     onWatchPress,
+    heightRatio = 0.6,
 }: LibraryHeroCarouselProps) {
     const { height: screenHeight, width: screenWidth } = useWindowDimensions()
     const showSidebar = useShowSidebar()
     const carouselWidth = showSidebar ? screenWidth - 80 : screenWidth
-    const { sidebarTag } = React.useContext(TVFocusContext)
 
-    const isTV = Platform.isTV
     // Synchronous "is sidebar focused" signal — true iff any sidebar button
     // currently has TV focus. Updated by `SidebarShell` directly so it does
     // not lag behind the 100ms grace window used by the visual expansion atom.
@@ -98,8 +104,8 @@ export function LibraryHeroCarousel({
     // Suppresses the carousel pseudo-active highlight when the user has
     // navigated onto a media card below the carousel.
     const isLibraryShelvesFocused = useAtomValue(__libraryShelvesFocusedAtom)
-    const heroHeight = isTV ? Math.round(screenHeight * 0.60) : (screenHeight < 750 ? 260 : 310)
-    const titleFontSize = isTV ? 40 : (screenHeight < 750 ? 22 : 26)
+    const heroHeight = Math.round(screenHeight * heightRatio)
+    const titleFontSize = 40
 
     const items = React.useMemo<UnifiedHeroItem[]>(() => {
         if (type === "anime") {
@@ -140,7 +146,12 @@ export function LibraryHeroCarousel({
     }, [type, animeItems, mangaItems])
 
     const [currentIndex, setCurrentIndex] = React.useState(0)
-    const scrollRef = React.useRef<ScrollView | null>(null)
+    // useAnimatedRef (not React.useRef) so reanimated 3.x doesn't
+    // complain when this ref is captured by useAnimatedScrollHandler
+    // and we later mutate `scrollRef.current` from a JS callback
+    // (scrollToIndex, setInterval). Same ref also passed to the
+    // Animated.ScrollView below, which is fine.
+    const scrollRef = useAnimatedRef<ScrollView>()
     const scrollX = useSharedValue(0)
     const isInteracting = React.useRef(false)
 
@@ -252,11 +263,12 @@ export function LibraryHeroCarousel({
     )
 
     const handleSlideFocus = React.useCallback((index: number) => {
-        setCurrentIndex(index)
+        if (index === currentIndex) return
         setTimeout(() => {
-            scrollRef.current?.scrollTo({ x: index * carouselWidth, animated: true })
+            scrollRef.current?.scrollTo({ x: index * carouselWidth, animated: false })
+            setCurrentIndex(index)
         }, 0)
-    }, [carouselWidth])
+    }, [carouselWidth, currentIndex])
 
     if (items.length === 0) return null
 
@@ -286,9 +298,9 @@ export function LibraryHeroCarousel({
                 // re-evaluates preferred focus when the ScrollView scrolls
                 // (auto-rotate, jump-to-index, momentum), yanking focus
                 // away from the sidebar mid-flight. On TV we drive slide
-                // changes via focus jumps + the existing `scrollTo`
-                // refs, so a passive ScrollView is sufficient.
-                scrollEnabled={!isTV && items.length > 1}
+                // changes via focus jumps + the existing `scrollTo` refs,
+                // so a passive ScrollView is sufficient.
+                scrollEnabled={items.length > 1}
                 showsHorizontalScrollIndicator={false}
                 scrollEventThrottle={16}
                 focusable={false}
@@ -310,7 +322,6 @@ export function LibraryHeroCarousel({
                         heroHeight={heroHeight}
                         titleFontSize={titleFontSize}
                         currentIndex={currentIndex}
-                        sidebarTag={sidebarTag}
                         onSlideFocus={handleSlideFocus}
                         isTabFocused={isFocused}
                         isSidebarFocused={isSidebarFocused}
@@ -321,7 +332,7 @@ export function LibraryHeroCarousel({
 
             {items.length > 1 && (
                 <View
-                    className={cn("absolute flex-row items-center", isTV ? "bottom-8 left-8 gap-2" : "bottom-6 left-5 gap-1.5")}
+                    className="absolute flex-row items-center justify-center bottom-8 left-0 right-0 gap-2"
                     pointerEvents="none"
                 >
                     {items.map((_, idx) => (
@@ -329,7 +340,6 @@ export function LibraryHeroCarousel({
                             key={idx}
                             index={idx}
                             isActive={idx === currentIndex}
-                            isTV={isTV}
                             onPress={() => handleDotPress(idx)}
                         />
                     ))}
@@ -339,16 +349,15 @@ export function LibraryHeroCarousel({
     )
 }
 
-function HeroDot({ isActive, isTV }: { index: number, isActive: boolean, isTV: boolean, onPress: () => void }) {
+function HeroDot({ isActive, onPress: _onPress }: { index: number, isActive: boolean, onPress: () => void }) {
     return (
         <View
-            className={cn(
-                "rounded-full transition-all duration-300",
+            className={`rounded-full transition-all duration-300 ${
                 isActive
-                    ? isTV ? "w-8 bg-white" : "w-6 bg-white"
-                    : isTV ? "w-3 bg-white/35" : "w-2 bg-white/35",
-            )}
-            style={{ height: isTV ? 5 : 3.5 }}
+                    ? "w-8 bg-white"
+                    : "w-3 bg-white/35"
+            }`}
+            style={{ height: 5 }}
         />
     )
 }
@@ -363,7 +372,6 @@ function LibraryHeroSlide({
     heroHeight,
     titleFontSize,
     currentIndex,
-    sidebarTag,
     onSlideFocus,
     isTabFocused,
     isSidebarFocused,
@@ -378,7 +386,6 @@ function LibraryHeroSlide({
     heroHeight: number
     titleFontSize: number
     currentIndex: number
-    sidebarTag: number | null
     onSlideFocus?: (index: number) => void
     /**
      * True when the library tab currently holds TV focus. Mirrored from
@@ -391,8 +398,6 @@ function LibraryHeroSlide({
     isSidebarFocused: boolean
     isLibraryShelvesFocused: boolean
 }) {
-    const isTV = Platform.isTV
-
     const [btnFocused, setBtnFocused] = React.useState(false)
     // Active style = "highlighted" (white bg + brand border) treatment.
     // The pill stays pressable in all cases — only the visual styling
@@ -411,8 +416,7 @@ function LibraryHeroSlide({
     //   * any library shelves card holds TV focus (Continue Watching,
     //     Downloads, horizontal shelves),
     //   * the slide sits at the by-design inactive index.
-    const showActiveStyle = isTV
-        && (btnFocused || (index === currentIndex && isTabFocused))
+    const showActiveStyle = (btnFocused || (index === currentIndex && isTabFocused))
         && index !== INACTIVE_SLIDE_INDEX
         && !isSidebarFocused
         && !isLibraryShelvesFocused
@@ -454,61 +458,26 @@ function LibraryHeroSlide({
             style={{ width: screenWidth, height: heroHeight }}
             className="relative flex justify-end"
         >
-            {/* Background tap target — only rendered on non-TV platforms.
-                On TV the absolute-fill Pressable occupies the full slide
-                bounds; even with focusable={false} it physically blocks
-                tvOS's spatial focus vectors heading LEFT from the action
-                button, choking the nextFocusLeft chain to the sidebar.
-                Mobile uses touch, so omitting this on TV costs nothing. */}
-            {!isTV && (
-                <Pressable
-                    style={ABSOLUTE_FILL_STYLE}
-                    onPress={() => {
-                        router.push(`/(app)/entry/${type}/${item.id}`)
-                    }}
-                />
-            )}
-
             <Animated.View
                 pointerEvents="box-none"
                 style={animatedContentStyle}
-                className={cn("flex flex-col gap-2.5 justify-end", isTV ? "px-8 pb-20" : "px-5 pb-16")}
+                className="flex flex-col gap-2.5 justify-end px-8 pb-20"
             >
-                {/* On TV: render text-only (no Pressable wrapper) so it does
-                    not introduce a competing spatial focus target. On
-                    mobile, the title is tappable and navigates to the
-                    entry screen. */}
-                {isTV ? (
-                    <Text
-                        numberOfLines={2}
-                        style={{ fontSize: titleFontSize }}
-                        className="text-white font-extrabold tracking-tight leading-9"
-                    >
-                        {item.title}
-                    </Text>
-                ) : (
-                    <Pressable
-                        onPress={() => {
-                            router.push(`/(app)/entry/${type}/${item.id}`)
-                        }}
-                    >
-                        <Text
-                            numberOfLines={2}
-                            style={{ fontSize: titleFontSize }}
-                            className="text-white font-extrabold tracking-tight leading-9"
-                        >
-                            {item.title}
-                        </Text>
-                    </Pressable>
-                )}
+                <Text
+                    numberOfLines={2}
+                    style={{ fontSize: titleFontSize }}
+                    className="text-white font-extrabold tracking-tight leading-9"
+                >
+                    {item.title}
+                </Text>
 
                 <View className="flex-row items-center gap-1.5 flex-wrap">
                     {item.genres.map((genre, idx) => (
                         <React.Fragment key={genre}>
                             {idx > 0 && (
-                                <Text className={cn("font-bold", isTV ? "text-sm text-white/20" : "text-[10px]")}> • </Text>
+                                <Text className="font-bold text-sm text-white/20"> • </Text>
                             )}
-                            <Text className={cn("font-semibold tracking-wider uppercase", isTV ? "text-sm text-white/55" : "text-[11px]")}>
+                            <Text className="font-semibold tracking-wider uppercase text-sm text-white/55">
                                 {genre}
                             </Text>
                         </React.Fragment>
@@ -528,39 +497,19 @@ function LibraryHeroSlide({
                     // the sidebar. `focusable={false}` on the inner Pressable
                     // is not enough; Apple TV's spatial engine still snags
                     // on the wrapper rect and absorbs DPAD LEFT before the
-                    // `nextFocusLeft={sidebarTag}` chain on the media card
-                    // can fire. `display:'none'` unmounts the wrapper from
+                    // parent FocusableView's `nextFocusLeft` chain can fire.
+                    // `display:'none'` unmounts the wrapper from
                     // the native focus tree entirely. Only the active slide
                     // stays mounted, so inter-slide navigation is unaffected.
-                    style={isTV && isLibraryShelvesFocused && index !== currentIndex
+                    style={isLibraryShelvesFocused && index !== currentIndex
                         ? { display: "none" }
                         : undefined}
                 >
                     <Pressable
-                        // Suppressed from the focus tree when any library
-                        // shelf has TV focus. Without this, RN TV's diagonal
-                        // up-left spatial search from a media card would
-                        // still pick the carousel's current-slide action
-                        // button as a "left" target, beating the
-                        // `nextFocusLeft={sidebarTag}` chain on the media
-                        // card. Yanking the carousel out of the focus tree
-                        // whenever shelves are focused makes the shelf's
-                        // chain the only leftward option, which RN TV honors.
-                        // `hasTVPreferredFocus` is intentionally NOT set:
-                        // tvOS aggressively re-evaluates the preferred focus
-                        // hint on every layout shift / re-render. The
-                        // backdrop's continuous pan animation triggers
-                        // re-evaluation often enough that the carousel
-                        // yanks focus back from the sidebar mid-flight.
-                        focusable={isTV && !isLibraryShelvesFocused}
-                        // Every slide's button keeps a focus chain leftward
-                        // to the sidebar — not just slide 0. The user can
-                        // land on any slide and exit the carousel via DPAD
-                        // LEFT regardless of the carousel's currentIndex.
-                        {...(isTV && sidebarTag ? { nextFocusLeft: sidebarTag } : {})}
+                        focusable={!isLibraryShelvesFocused}
                         onFocus={() => {
                             setBtnFocused(true)
-                            if (isTV && index !== currentIndex) {
+                            if (index !== currentIndex) {
                                 onSlideFocus?.(index)
                             }
                         }}
@@ -571,17 +520,15 @@ function LibraryHeroSlide({
                         android_ripple={{ color: "rgba(255,255,255,0.1)" }}
                     >
                         <Animated.View
-                            className={cn(
-                                "flex-row items-center rounded-xl gap-2 shadow-md transition-all duration-300",
-                                isTV ? "px-6 py-3.5" : "px-4.5 py-2.5",
-                                showActiveStyle && isTV
+                            className={`flex-row items-center rounded-xl gap-2 shadow-md transition-all duration-300 px-6 py-3.5 ${
+                                showActiveStyle
                                     ? "bg-white border-2 border-brand-400/80 shadow-2xl"
-                                    : "bg-white/10",
-                            )}
-                            style={isTV ? btnAnimatedStyle : undefined}
+                                    : "bg-white/10"
+                            }`}
+                            style={btnAnimatedStyle}
                         >
-                            <Ionicons name={iconName} size={isTV ? 18 : 13} color={showActiveStyle && isTV ? "black" : "rgba(255,255,255,0.5)"} />
-                            <Text className={cn("font-bold tracking-tight", isTV ? "text-base" : "text-xs", showActiveStyle && isTV ? "text-black" : "text-white/50")}>
+                            <Ionicons name={iconName} size={18} color={showActiveStyle ? "black" : "rgba(255,255,255,0.5)"} />
+                            <Text className={`font-bold tracking-tight text-base ${showActiveStyle ? "text-black" : "text-white/50"}`}>
                                 {buttonLabel}
                             </Text>
                         </Animated.View>
@@ -617,28 +564,29 @@ function LibraryHeroBackdrop({
         }
 
         setShouldRenderImages(false)
-        let timeoutId: ReturnType<typeof setTimeout> | undefined
-        const task = InteractionManager.runAfterInteractions(() => {
-            timeoutId = setTimeout(() => {
-                setShouldRenderImages(true)
-            }, HERO_IMAGE_MOUNT_DELAY_MS)
-        })
+        const timeoutId = setTimeout(() => {
+            setShouldRenderImages(true)
+        }, HERO_IMAGE_MOUNT_DELAY_MS)
 
         return () => {
-            task.cancel()
-            if (timeoutId) {
-                clearTimeout(timeoutId)
-            }
+            clearTimeout(timeoutId)
         }
     }, [items.length, itemsKey])
+
+    // Distance (px) over which the backdrop fades as the FlatList scrolls
+    // past it. Tuned to match the first snap target offset on the shelf
+    // rows so the backdrop fade completes roughly when the user reaches
+    // the second section rather than disappearing in the middle of the
+    // first scroll commit.
+    const HERO_BACKDROP_FADE_DISTANCE = 300
 
     const backgroundStyle = useAnimatedStyle(() => {
         const y = scrollY.value
         const scale = y < 0 ? 1 + Math.abs(y) / (heroHeight * 2) : 1
-        const offset = Math.min(Math.max(y, 0), 200)
+        const offset = Math.min(Math.max(y, 0), HERO_BACKDROP_FADE_DISTANCE)
 
         return {
-            opacity: interpolate(offset, [0, 200], [1, 0], Extrapolation.CLAMP),
+            opacity: interpolate(offset, [0, HERO_BACKDROP_FADE_DISTANCE], [1, 0], Extrapolation.CLAMP),
             transform: [{ scale }],
         }
     })

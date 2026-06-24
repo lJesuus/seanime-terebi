@@ -1,4 +1,5 @@
 import React from "react"
+import { Platform } from "react-native"
 import { Gesture } from "react-native-gesture-handler"
 import { runOnJS } from "react-native-reanimated"
 import {
@@ -80,6 +81,30 @@ interface UsePlayerGesturesParams {
  * recreated when structural dependencies change (screen dimensions, callbacks).
  */
 export function usePlayerGestures(params: UsePlayerGesturesParams) {
+    // TV has no touch — skip the entire gesture composition. The non-TV
+    // path repeatedly mutates `latestRef.current = {...}` on every
+    // render, and the four gesture constructors (Tap, Tap×2, Tap×2,
+    // LongPress) emit UI-thread worklet callbacks that capture
+    // `latestRef` to read `.current.screenWidth` and similar. Mutating a
+    // captured ref's `.current` triggers 4 Reanimated warnings per
+    // gesture per render — accounting for the 13 [Worklets] "Tried to
+    // modify key `current`..." lines fired during local-file playback
+    // init (3-4 renders × 4 gesture worklets).
+    //
+    // The stub returns `Gesture.Pan().runOnJS(true)`, a no-op PanGesture
+    // with zero callbacks. `<GestureDetector>` accepts it, the worklet
+    // state machine never activates because there are no touch events
+    // on TV, and the orchestrator's `gesture={screenGesture}` prop
+    // types correctly (PanGesture extends GestureType).
+    if (Platform.isTV) {
+        const noop = (..._args: unknown[]): void => {}
+        return {
+            screenGesture: Gesture.Pan().runOnJS(true),
+            handleSingleTap: noop,
+            flashCenterTapFeedback: noop,
+        }
+    }
+
     const {
         gRef, screenWidth, screenHeight, fillZoomScale,
         clearHideTimer, scheduleHide, showControls, toggleControls, closeSettings, setControlsVisible,

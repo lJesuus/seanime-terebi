@@ -1,4 +1,3 @@
-import { useIsTV } from "@/hooks/use-device"
 import { cn } from "@/lib/utils"
 import * as React from "react"
 import { LayoutChangeEvent, Pressable, Text, View } from "react-native"
@@ -16,11 +15,10 @@ type SegmentedControlProps<T extends string = string> = {
     hasTVPreferredFocus?: boolean
 }
 
-function OptionPressable({ option, index, active, isTV, hasTVPreferredFocus, onPress }: {
+function OptionPressable({ option, index, active, hasTVPreferredFocus, onPress }: {
     option: SegmentedControlOption
     index: number
     active: boolean
-    isTV: boolean
     hasTVPreferredFocus: boolean | undefined
     onPress: () => void
 }) {
@@ -28,8 +26,8 @@ function OptionPressable({ option, index, active, isTV, hasTVPreferredFocus, onP
     return (
         <Pressable
             onPress={onPress}
-            focusable={isTV}
-            hasTVPreferredFocus={isTV && hasTVPreferredFocus && index === 0}
+            focusable
+            hasTVPreferredFocus={hasTVPreferredFocus && index === 0}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
             className={cn(
@@ -51,7 +49,6 @@ function OptionPressable({ option, index, active, isTV, hasTVPreferredFocus, onP
 }
 
 export function SegmentedControl<T extends string = string>({ options, value, onChange, hasTVPreferredFocus }: SegmentedControlProps<T>) {
-    const isTV = useIsTV()
     const [width, setWidth] = React.useState(0)
     const activeIndex = options.findIndex(opt => opt.value === value)
 
@@ -105,7 +102,6 @@ export function SegmentedControl<T extends string = string>({ options, value, on
                         option={option}
                         index={index}
                         active={active}
-                        isTV={isTV}
                         hasTVPreferredFocus={hasTVPreferredFocus}
                         onPress={() => onChange(option.value)}
                     />

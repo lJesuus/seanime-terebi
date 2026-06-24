@@ -1,4 +1,3 @@
-import { useIsTV } from "@/hooks/use-device"
 import { NAV_THEME } from "@/lib/constants"
 import { Portal } from "@rn-primitives/portal"
 import * as React from "react"
@@ -27,6 +26,10 @@ type SeaSideDrawerProps = {
      * Width of the drawer as a fraction of the screen width. Defaults to 0.85
      * so on a 360px phone portrait there's a ~54px peek of the underlying
      * content that makes the drawer feel like a side panel (not a takeover).
+     *
+     * On the TV-only build we end up sizing for a 1920x1080 tvOS canvas, but
+     * callers can still tune `widthFraction` and `maxWidth` for narrower
+     * tablet-frame TVs.
      */
     widthFraction?: number
     /**
@@ -35,6 +38,15 @@ type SeaSideDrawerProps = {
      * of the screen at any size. Pass a number to clamp on tablet/TV.
      */
     maxWidth?: number
+    /**
+     * Optional native ref whose element should receive the first focus when
+     * the drawer mounts and serve as the focus-trap target whenever focus
+     * would otherwise escape to the title Pressable. Lets callers steer
+     * focus to a specific row of the drawer body instead of the title —
+     * useful on TV where opening a settings panel should land on the first
+     * interactive row rather than the panel header.
+     */
+    firstFocusRef?: React.RefObject<React.ComponentRef<typeof Pressable> | null>
 }
 
 const OPEN_DURATION = 250
@@ -50,10 +62,10 @@ export function SeaSideDrawer({
     onHeaderActionLayout,
     widthFraction = 0.85,
     maxWidth = Number.MAX_SAFE_INTEGER,
+    firstFocusRef,
 }: SeaSideDrawerProps) {
     const id = useId()
     const insets = useSafeAreaInsets()
-    const isTV = useIsTV()
     const { width: screenWidth } = useWindowDimensions()
 
     // Mount persistence — stays mounted during the slide-out animation so the
@@ -123,14 +135,23 @@ export function SeaSideDrawer({
         }
     }, [onHeaderActionLayout])
 
-    const trapFocusToTitle = useCallback(() => {
-        if (!isTV) return
+    // When focus would otherwise snap back to the title (e.g. the user hit
+    // DPAD on the backdrop or the bottom guard), prefer the supplied
+    // `firstFocusRef` so focus stays on the row the caller wants — fall
+    // back to the title Pressable when no `firstFocusRef` was provided.
+    // Keeps the focus chain coherent regardless of whether the drawer
+    // body carries its own focus target or relies on the title as the
+    // initial landing point.
+    const trapFocusToTarget = useCallback(() => {
         if (focusTrapTimerRef.current) clearTimeout(focusTrapTimerRef.current)
         focusTrapTimerRef.current = setTimeout(() => {
             focusTrapTimerRef.current = null
-            trapRef.current?.focus()
+            const target = (firstFocusRef?.current ?? trapRef.current) as unknown as
+                | { focus?: () => void }
+                | null
+            target?.focus?.()
         }, 16)
-    }, [isTV])
+    }, [firstFocusRef])
 
     // Clear any pending focus trap timer when the drawer closes.
     React.useEffect(() => {
@@ -139,6 +160,23 @@ export function SeaSideDrawer({
             focusTrapTimerRef.current = null
         }
     }, [open])
+
+    // On mount (drawer opens), schedule a focus call to `firstFocusRef` so
+    // the user lands on the row the caller specified instead of the title
+    // Pressable. The 60 ms delay is just past the drawer's slide-in start
+    // so the layout has settled and the target View is interactive before
+    // the focus command fires. Cleanup clears the timer if the drawer closes
+    // before it lands so we never focus a ref that's been unmounted.
+    React.useEffect(() => {
+        if (!open) return
+        if (!firstFocusRef?.current) return
+        const target = firstFocusRef.current as unknown as
+            | { focus?: () => void }
+            | null
+        if (!target?.focus) return
+        const timer = setTimeout(() => target.focus?.(), 60)
+        return () => clearTimeout(timer)
+    }, [open, firstFocusRef])
 
     // TV remote back button closes the drawer.
     useEffect(() => {
@@ -177,8 +215,8 @@ export function SeaSideDrawer({
                     <Pressable
                         style={StyleSheet.absoluteFill}
                         onPress={handleBackdropPress}
-                        focusable={isTV}
-                        onFocus={trapFocusToTitle}
+                        focusable
+                        onFocus={trapFocusToTarget}
                         accessibilityLabel="Close drawer"
                     />
                 </Animated.View>
@@ -196,14 +234,14 @@ export function SeaSideDrawer({
                         },
                         drawerStyle,
                     ]}
-                    accessible={isTV ? true : undefined}
-                    accessibilityViewIsModal={isTV ? true : undefined}
+                    accessible
+                    accessibilityViewIsModal
                 >
                     <View className="flex-row items-center justify-between px-4 mb-3">
                         {title ? (
                             <Pressable
                                 ref={trapRef}
-                                focusable={isTV}
+                                focusable
                                 onPress={handleBackdropPress}
                                 className="flex-1"
                             >
@@ -256,14 +294,12 @@ export function SeaSideDrawer({
                                             {footer}
                                         </View>
                                     )}
-                                    {isTV && (
-                                        <View
-                                            focusable
-                                            onFocus={trapFocusToTitle}
-                                            style={{ height: 1, opacity: 0 }}
-                                            pointerEvents="none"
-                                        />
-                                    )}
+                                    <View
+                                        focusable
+                                        onFocus={trapFocusToTarget}
+                                        style={{ height: 1, opacity: 0 }}
+                                        pointerEvents="none"
+                                    />
                                 </View>
                             </View>
                         </ScrollView>

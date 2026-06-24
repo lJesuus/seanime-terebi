@@ -2,8 +2,14 @@ import type { Anime_Entry, Anime_Episode, Onlinestream_VideoSource } from "@/api
 import { useServerUrl } from "@/atoms/server.atoms"
 import { isLocalServer } from "@/lib/downloads"
 import { useIsServerConnected } from "@/lib/offline"
-import { toSourceFromOnlineStream, useStartOnlineStreamPlayback } from "@/lib/player"
-import { currentPlaybackSourceAtom, playerErrorAtom, playerLoadingMessageAtom, playerOpenAtom } from "@/lib/player"
+import { toSourceFromOnlineStream } from "./source-resolver"
+import {
+    currentPlaybackSourceAtom,
+    playerErrorAtom,
+    playerLoadingMessageAtom,
+    playerOpenAtom,
+    useStartOnlineStreamPlayback,
+} from "./session"
 import { openExternalPlayerURL } from "@/lib/player/external-players"
 import { getLocalEpisodePlaybackSource } from "@/lib/player/local-file-source"
 import { getPlayerPreferences } from "@/lib/player/player-preferences"

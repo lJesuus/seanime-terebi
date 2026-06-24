@@ -2,17 +2,21 @@ import { Anime_Episode, Continuity_WatchHistory } from "@/api/generated/types"
 import { getEpisodePercentageComplete } from "@/api/hooks/continuity.hooks"
 import { useServerStatus } from "@/atoms/server.atoms"
 import { EpisodeCard } from "@/components/features/anime/episode-card"
+import { useIsTV } from "@/hooks/use-device"
 import { useLibraryShelvesFocus } from "@/hooks/use-library-shelves-focus"
 import { getEpisodeSpoilerState } from "@/lib/anime-spoilers"
-import { TVFocusContext } from "@/contexts/tv-focus-context"
 import React from "react"
 import { ActivityIndicator, Dimensions, FlatList, ListRenderItemInfo, Text, View } from "react-native"
 
 const { width } = Dimensions.get("screen")
 const DEFAULT_CARD_WIDTH = (3.5 / 5) * width
 const SPACING = 20
-const CONTENT_CONTAINER_STYLE = { paddingHorizontal: SPACING }
-const ITEM_SEPARATOR_STYLE = { width: SPACING }
+// Native `gap` rather than an ItemSeparatorComponent View. On tvOS
+// / Android TV an injected separator view breaks the 1:1 mapping
+// between FlatList children and the positions the TV focus engine's
+// spatial search walks across (the working HorizontalMediaCardList
+// uses this same pattern).
+const CONTENT_CONTAINER_STYLE = { paddingHorizontal: SPACING, gap: SPACING }
 const INITIAL_EPISODE_CARD_RENDER = 3
 
 type EpisodeCardListProps = {
@@ -38,10 +42,6 @@ function EpisodeLoadingBadge() {
     )
 }
 
-function EpisodeCardSeparator() {
-    return <View style={ITEM_SEPARATOR_STYLE} />
-}
-
 export function EpisodeCardList(props: EpisodeCardListProps) {
     const {
         title,
@@ -58,13 +58,8 @@ export function EpisodeCardList(props: EpisodeCardListProps) {
         cardWidth: cardWidthProp,
     } = props
     const serverStatus = useServerStatus()
+    const isTV = useIsTV()
     const { onFocus: notifyShelfFocusIn, onBlur: notifyShelfFocusOut } = useLibraryShelvesFocus()
-    // DPAD LEFT from the leftmost card of this row must jump straight
-    // to the sidebar. Other cards reach it via RN TV's horizontal
-    // scroll/spatial focus search landing on the first card, at which
-    // point this chain takes over.
-    const { sidebarTag } = React.useContext(TVFocusContext)
-    const firstCardNextFocusLeft = sidebarTag ?? undefined
     const resolvedCardWidth = cardWidthProp ?? DEFAULT_CARD_WIDTH
     const resolvedCardRowHeight = Math.ceil(resolvedCardWidth * (9 / 16) + 60)
     const resolvedItemFullWidth = resolvedCardWidth + SPACING
@@ -84,9 +79,6 @@ export function EpisodeCardList(props: EpisodeCardListProps) {
         const animeTitle = showAnimeTitle
             ? (item.baseAnime?.title?.userPreferred || item.baseAnime?.title?.english || item.baseAnime?.title?.romaji || undefined)
             : undefined
-        const isFirstCard = index === 0
-        const cardFocusLeft = isFirstCard ? firstCardNextFocusLeft : undefined
-
         return (
             <EpisodeCard
                 cardWidth={resolvedCardWidth}
@@ -107,11 +99,14 @@ export function EpisodeCardList(props: EpisodeCardListProps) {
                 animeTitle={animeTitle}
                 onFocus={notifyShelfFocusIn}
                 onBlur={notifyShelfFocusOut}
-                nextFocusLeft={cardFocusLeft}
             />
         )
-    }, [disabled, loadingEpisodeNumber, mediaId, onEpisodePress, serverStatus, spoilerActive, watchedProgress, watchHistory, showAnimeTitle, notifyShelfFocusIn, notifyShelfFocusOut, firstCardNextFocusLeft])
+    }, [disabled, loadingEpisodeNumber, mediaId, onEpisodePress, serverStatus, spoilerActive, watchedProgress, watchHistory, showAnimeTitle, notifyShelfFocusIn, notifyShelfFocusOut])
 
+    // Standard TV nav: each card is individually focusable on TV; the
+    // native focus engine handles DPAD navigation and scrolls the focused
+    // card into view automatically. No custom snap, no momentum tweaks —
+    // the row scrolls like any horizontal list, with focus moving along.
     const getItemLayout = React.useCallback((_: ArrayLike<Anime_Episode> | null | undefined, index: number) => ({
         length: resolvedItemFullWidth,
         offset: resolvedItemFullWidth * index,
@@ -120,7 +115,7 @@ export function EpisodeCardList(props: EpisodeCardListProps) {
 
     return (
         <View>
-            {!!title && <View className="p-4">
+            {!!title && <View className="p-2">
                 <Text className="text-2xl font-bold text-foreground">{title}</Text>
             </View>}
             <View style={{ height: resolvedCardRowHeight }}>
@@ -132,17 +127,16 @@ export function EpisodeCardList(props: EpisodeCardListProps) {
                     keyExtractor={keyExtractor}
                     renderItem={renderEpisodeCard}
                     contentContainerStyle={CONTENT_CONTAINER_STYLE}
-                    ItemSeparatorComponent={EpisodeCardSeparator}
                     getItemLayout={getItemLayout}
                     initialNumToRender={Math.min(episodes.length, INITIAL_EPISODE_CARD_RENDER)}
                     maxToRenderPerBatch={INITIAL_EPISODE_CARD_RENDER}
                     windowSize={5}
-                    removeClippedSubviews
-                    snapToInterval={resolvedItemFullWidth}
-                    snapToAlignment="start"
-                    decelerationRate="fast"
-                    directionalLockEnabled
-                    disableIntervalMomentum
+                    // On tvOS/Android TV the spatial focus engine cannot
+                    // target a card that has been unmounted by
+                    // removeClippedSubviews — DPAD would jump over it,
+                    // leaving no focus highlight. Mobile keeps clipping
+                    // on for memory savings.
+                    removeClippedSubviews={!isTV}
                 />
             </View>
         </View>

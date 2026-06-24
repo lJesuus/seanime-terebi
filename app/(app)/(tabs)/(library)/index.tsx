@@ -12,6 +12,9 @@ import { ContinueWatchingItem, useAnimeLibraryCollection } from "@/hooks/use-ani
 import { useIOSScrollRefreshRateWorkaround } from "@/hooks/use-ios-scroll-refresh-rate-workaround"
 import { useIsTV } from "@/hooks/use-device"
 import { useIsServerConnected } from "@/lib/offline"
+import { prefetchAllDiscoverQueries } from "@/components/features/discover/discover-queries"
+import { useServerUrl, useServerAuthToken } from "@/atoms/server.atoms"
+import { useQueryClient } from "@tanstack/react-query"
 
 import { useIsFocused } from "@react-navigation/native"
 import { router, useFocusEffect } from "expo-router"
@@ -53,6 +56,28 @@ export default function LibraryScreen() {
         hasNonLocalEpisodes,
     } = useAnimeLibraryCollection()
     const refetchRef = React.useRef(refetch)
+
+    const queryClient = useQueryClient()
+    const serverUrl = useServerUrl()
+    const serverAuthToken = useServerAuthToken()
+
+    // Once the user's main library data has loaded, kick off a
+    // low-priority background prefetch of every list query the
+    // Discover tab may need. The 500 ms delay gives the visible
+    // library content a head-start on the network — discover queries
+    // get queue slots only after the user can already interact with
+    // their library. Combined with `staleTime: 5 min` on each
+    // discover hook, this brings cold-mount `discover primary
+    // content ready` from ~9629 ms down to a cache hit on a warm run.
+    React.useEffect(() => {
+        if (!isConnected || isLoading) return
+
+        const timer = setTimeout(() => {
+            void prefetchAllDiscoverQueries(queryClient, serverUrl, serverAuthToken)
+        }, 500)
+
+        return () => clearTimeout(timer)
+    }, [isConnected, isLoading, queryClient, serverUrl, serverAuthToken])
 
     React.useEffect(() => {
         refetchRef.current = refetch
@@ -151,6 +176,23 @@ export default function LibraryScreen() {
 
             <TabFadeView>
                 <View className="flex-1">
+                    {/* Sibling of the FlatList on purpose — out of the
+                        ListHeaderComponent so Android TV's spatial focus
+                        treats the carousel as a separate focus region from
+                        the cards below. Inside the FlatList it kept winning
+                        the LEFT spatial search and stealing focus from
+                        Continue Watching. */}
+                    {hasHero && (
+                        <LibraryHeroCarousel
+                            type="anime"
+                            animeItems={continueWatchingList}
+                            isFocused={isFocused}
+                            scrollY={scrollY}
+                            onWatchPress={handleWatchPress}
+                            heightRatio={0.45}
+                        />
+                    )}
+
                     <Animated.FlatList
                         focusable={false}
                         key={isConnected ? "online" : "offline"}
@@ -158,23 +200,33 @@ export default function LibraryScreen() {
                         renderItem={renderShelfSection}
                         keyExtractor={(item) => item.key}
                         ListHeaderComponent={
-                            <View className="flex flex-col gap-4">
-                                {hasHero && (
-                                    <LibraryHeroCarousel
-                                        type="anime"
-                                        animeItems={continueWatchingList}
-                                        isFocused={isFocused}
-                                        scrollY={scrollY}
-                                        onWatchPress={handleWatchPress}
-                                    />
-                                )}
-                                {isConnected && continueWatchingList.length > 0 && (
+                            isConnected && continueWatchingList.length > 0 ? (
+                                // Negative `marginBottom` pulls the first
+                                // shelf (Currently watching) up so Continue
+                                // Watching feels visually adjacent to it
+                                // instead of separated by the shelf
+                                // section's title `paddingVertical: 12 (TV) /
+                                // 8 (mobile)`. The branch keeps the same
+                                // effective overlap (~2 px) on both
+                                // platforms — `-14` on TV cancels the 12 px
+                                // title padding, `-10` on mobile cancels the
+                                // 8 px title padding — so the two card rows
+                                // read as one continuous band everywhere.
+                                //
+                                // Note: relies on the shelf title NOT being
+                                // in `compact` mode (which sets
+                                // `paddingVertical: 0`). The render path
+                                // below doesn't pass `compact`, so this is
+                                // safe today; if that ever changes, retune
+                                // these values (e.g. -22/-18) to hit the
+                                // same ~2 px overlap.
+                                <View style={{ marginBottom: isTV ? -14 : -10 }}>
                                     <ContinueWatching items={continueWatchingList} />
-                                )}
-                            </View>
+                                </View>
+                            ) : null
                         }
                         ListFooterComponent={<DownloadedAnimeList />}
-                        ListEmptyComponent={isConnected && continueWatchingList.length === 0 ? (
+                        ListEmptyComponent={isConnected && continueWatchingList.length === 0 && shelfSections.length === 0 ? (
                             <LuffyError
                                 title="Your anime library is empty"
                                 description="Add anime to your collection or use the Discover tab to find something to watch."
@@ -182,7 +234,7 @@ export default function LibraryScreen() {
                         ) : null}
                         contentInsetAdjustmentBehavior="never"
                         contentContainerStyle={{
-                            paddingTop: isTV ? 0 : (hasHero ? 0 : insets.top),
+                            paddingTop: 0,
                             paddingBottom: 80,
                         }}
                         showsVerticalScrollIndicator={false}

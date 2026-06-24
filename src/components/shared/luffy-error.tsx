@@ -1,6 +1,7 @@
 import { IMAGES } from "@/constants/images"
 import * as React from "react"
-import { Image, Text, View } from "react-native"
+import { Text, View } from "react-native"
+import { Image } from "expo-image"
 
 type LuffyErrorProps = {
     title?: string
@@ -14,7 +15,7 @@ export function LuffyError({ title = "Oops!", description, children }: LuffyErro
             <View style={{ width: 128, height: 128 }}>
                 <Image
                     source={IMAGES.luffy01}
-                    resizeMode="contain"
+                    contentFit="contain"
                     style={{ width: "100%", height: "100%" }}
                 />
             </View>

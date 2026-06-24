@@ -4,7 +4,7 @@ import { TvFocusablePressable } from "@/components/ui/tv-focusable"
 import { cn } from "@/lib/utils"
 import { Captions, ChevronLeft, List, Pause, Play, PictureInPicture2, RotateCcw, RotateCw, Settings, SkipBack, SkipForward, Unlock } from "lucide-react-native"
 import React from "react"
-import { findNodeHandle, Platform, Text, View, type ViewStyle } from "react-native"
+import { findNodeHandle, Platform, Pressable, Text, View, type ViewStyle } from "react-native"
 import { GestureDetector } from "react-native-gesture-handler"
 import type { ComposedGesture, GestureType } from "react-native-gesture-handler"
 import Animated, { type AnimatedStyle, FadeIn, FadeOut, type SharedValue, useAnimatedStyle, withTiming } from "react-native-reanimated"
@@ -19,18 +19,25 @@ export function Pill({ text, color }: { text: string; color?: string }) {
     )
 }
 
-export function PlayerIconButton({ icon, onPress, active, disabled }: {
+export const PlayerIconButton = React.forwardRef<React.ComponentRef<typeof Pressable>, {
     icon: React.ReactNode
     onPress: () => void
     active?: boolean
     disabled?: boolean
-}) {
+    hasTVPreferredFocus?: boolean
+    onFocus?: (e: any) => void
+    onBlur?: (e: any) => void
+}>(function PlayerIconButton({ icon, onPress, active, disabled, hasTVPreferredFocus, onFocus, onBlur }, ref) {
     return (
         <TvFocusablePressable
+            ref={ref}
             onPress={disabled ? undefined : onPress}
             focusedClassName="border-brand-400/60"
             scaleTo={1.1}
             hitSlop={8}
+            hasTVPreferredFocus={hasTVPreferredFocus}
+            onFocus={onFocus}
+            onBlur={onBlur}
         >
             <View
                 className={cn(
@@ -43,7 +50,7 @@ export function PlayerIconButton({ icon, onPress, active, disabled }: {
             </View>
         </TvFocusablePressable>
     )
-}
+})
 
 function SegmentFill({
     seekBarProgress,
@@ -116,6 +123,34 @@ interface ControlsOverlayProps {
     onLockScreen: () => void
     onSeekRelative: (delta: number) => void
     buttonSeekSec: number
+    /**
+     * Single DPAD LEFT/RIGHT seek amount while the seek bar has focus.
+     * Equals the touch double-tap seek so a single TV press mirrors the
+     * mobile double-tap gesture.
+     */
+    doubleTapSeekSec: number
+    /**
+     * Ref to the Settings button so the parent can bounce TV focus back
+     * to it whenever the settings drawer closes (panel open → null).
+     * Without this, focus falls back to the outer wrapper Pressable and
+     * the user has to re-navigate from scratch on the next DPAD press.
+     * Typed as `MutableRefObject<... | null>` to match what `useRef(x => null)`
+     * actually returns from React's overloads.
+     */
+    settingsBtnRef?: React.MutableRefObject<React.ComponentRef<typeof Pressable> | null>
+    /**
+     * When true, the Settings button claims `hasTVPreferredFocus`. Set by
+     * the parent when the settings drawer closes (panel open → null) so
+     * RN TV's focus engine lands on the Settings button naturally after
+     * the panel's focused row unmounts — no imperative `.focus()` needed.
+     */
+    shouldFocusSettings?: boolean
+    /**
+     * Called when the Settings button receives focus (including from the
+     * preferred-focus resolution). The parent uses this to clear
+     * `shouldFocusSettings` so the button doesn't re-claim focus later.
+     */
+    onSettingsFocused?: () => void
 }
 
 function isSkippableChapter(title?: string) {
@@ -135,7 +170,8 @@ export function ControlsOverlay(props: ControlsOverlayProps) {
         canPlayNext, canPlayPrevious, onManualNextEpisode, onManualPreviousEpisode,
         onStartPiP, onToggleSubtitles,
         chapters, seekBarProgress,
-        onLockScreen, onSeekRelative, buttonSeekSec,
+        onLockScreen, onSeekRelative, buttonSeekSec, doubleTapSeekSec, settingsBtnRef,
+        shouldFocusSettings, onSettingsFocused,
     } = props
 
     const animatedStyle = useAnimatedStyle(() => ({
@@ -297,13 +333,17 @@ export function ControlsOverlay(props: ControlsOverlayProps) {
                             onLayout={onSeekBarLayout}
                             style={{ height: 36, justifyContent: "center" }}
                             focusable={Platform.isTV}
+                            // @ts-expect-error - RN <View> core types omit `onKeyDown`; TV DPAD LEFT/RIGHT seeks by the double-tap amount while the seek bar has focus.
                             onKeyDown={Platform.isTV ? (e: any) => {
                                 if (e.key === "ArrowLeft" || e.key === "Left") {
-                                    onSeekRelative(-5)
+                                    onSeekRelative(-doubleTapSeekSec)
+                                    // Returning true stops the event from bubbling
+                                    // to the outer <Pressable onKeyDown> in
+                                    // `player.tsx`, which would otherwise double-seek.
                                     return true
                                 }
                                 if (e.key === "ArrowRight" || e.key === "Right") {
-                                    onSeekRelative(5)
+                                    onSeekRelative(doubleTapSeekSec)
                                     return true
                                 }
                                 return false
@@ -391,7 +431,6 @@ export function ControlsOverlay(props: ControlsOverlayProps) {
 
                         <TvFocusablePressable
                             ref={playPauseBtnRef}
-                            key={`playpause-${String(visible)}`}
                             hasTVPreferredFocus={visible}
                             onPress={() => {
                                 onTogglePlayPause()
@@ -471,11 +510,14 @@ export function ControlsOverlay(props: ControlsOverlayProps) {
                         )}
 
                         <PlayerIconButton
+                            ref={settingsBtnRef}
                             icon={<Settings size={18} color="rgba(255,255,255,0.8)" />}
                             onPress={() => {
                                 setPanel("main")
                                 clearHideTimer()
                             }}
+                            hasTVPreferredFocus={shouldFocusSettings}
+                            onFocus={onSettingsFocused ? () => onSettingsFocused() : undefined}
                         />
 
                         <TvFocusablePressable

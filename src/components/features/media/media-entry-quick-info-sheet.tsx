@@ -12,7 +12,8 @@ import Ionicons from "@expo/vector-icons/Ionicons"
 import { LinearGradient } from "expo-linear-gradient"
 import { router } from "expo-router"
 import * as React from "react"
-import { ActivityIndicator, Image, Linking, Pressable, View } from "react-native"
+import { ActivityIndicator, Linking, Pressable, View } from "react-native"
+import { Image } from "expo-image"
 import Animated, { FadeIn, FadeInUp } from "react-native-reanimated"
 import { EditAnilistEntry } from "./edit-anilist-entry"
 import { MediaEntryAudienceScore } from "./media-entry-score"
@@ -189,7 +190,7 @@ export function MediaEntryQuickInfoSheet<T extends "anime" | "manga">({
                     >
                         <Image
                             source={{ uri: bannerUri }}
-                            resizeMode="cover"
+                            contentFit="cover"
                             style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, width: "100%", height: "100%" }}
                         />
 

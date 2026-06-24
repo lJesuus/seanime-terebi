@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils"
 import React from "react"
-import { findNodeHandle, Platform, Pressable, PressableProps, ViewProps } from "react-native"
+import { findNodeHandle, Pressable, PressableProps, ViewProps } from "react-native"
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated"
 
 type TvFocusablePressableProps = PressableProps & {
@@ -14,9 +14,19 @@ type TvFocusablePressableProps = PressableProps & {
     nextFocusDown?: number | null
     nextFocusUp?: number | null
     hasTVPreferredFocus?: boolean
+    /**
+     * Disables the Reanimated focus scale-up animation, keeping the on-focus
+     * border highlight but skipping the transform. Useful in dense layouts
+     * (e.g. settings drawers, menus) where a scale glitch on every focus
+     * change reads as visual noise rather than polish.
+     */
+    noScale?: boolean
     /** When true, sets nextFocusLeft to the element's own native tag,
      * effectively blocking LEFT navigation away from this element. */
     blockLeft?: boolean
+    /** When true, sets nextFocusRight to the element's own native tag,
+     * effectively blocking RIGHT navigation away from this element. */
+    blockRight?: boolean
     /** When true, sets nextFocusDown to the element's own native tag,
      * effectively blocking DOWN navigation away from this element. */
     blockDown?: boolean
@@ -25,6 +35,8 @@ type TvFocusablePressableProps = PressableProps & {
     blockUp?: boolean
 }
 
+// TV-only app. The original `isTV` guards collapsed to runtime-true since
+// every shipped target (Apple TV / Android TV) reports `Platform.isTV`.
 export const TvFocusablePressable = React.forwardRef<React.ComponentRef<typeof Pressable>, TvFocusablePressableProps>(function TvFocusablePressable({
     scaleTo = 1.05,
     focusedClassName = "border-brand-400/80",
@@ -40,33 +52,36 @@ export const TvFocusablePressable = React.forwardRef<React.ComponentRef<typeof P
     nextFocusUp,
     hasTVPreferredFocus,
     focusable,
+    noScale,
     blockLeft,
+    blockRight,
     blockDown,
     blockUp,
     ...rest
 }: TvFocusablePressableProps, ref) {
-    const isTV = Platform.isTV
     const [isFocused, setIsFocused] = React.useState(false)
     const scale = useSharedValue(1)
 
     const innerRef = React.useRef<React.ComponentRef<typeof Pressable>>(null)
     const [leftBlockTag, setLeftBlockTag] = React.useState<number | null>(null)
+    const [rightBlockTag, setRightBlockTag] = React.useState<number | null>(null)
     const [downBlockTag, setDownBlockTag] = React.useState<number | null>(null)
     const [upBlockTag, setUpBlockTag] = React.useState<number | null>(null)
     const tagResolved = React.useRef(false)
 
     const handleBlockLayout = React.useCallback(() => {
-        if (!isTV || tagResolved.current) return
+        if (tagResolved.current) return
         const node = innerRef.current
         if (!node) return
         const tag = findNodeHandle(node)
         if (tag !== null) {
             if (blockLeft) setLeftBlockTag(tag)
+            if (blockRight) setRightBlockTag(tag)
             if (blockDown) setDownBlockTag(tag)
             if (blockUp) setUpBlockTag(tag)
-            if (blockLeft || blockDown || blockUp) tagResolved.current = true
+            if (blockLeft || blockRight || blockDown || blockUp) tagResolved.current = true
         }
-    }, [blockLeft, blockDown, blockUp, isTV])
+    }, [blockLeft, blockRight, blockDown, blockUp])
 
     const combinedRef = React.useCallback(
         (instance: React.ComponentRef<typeof Pressable> | null) => {
@@ -78,8 +93,15 @@ export const TvFocusablePressable = React.forwardRef<React.ComponentRef<typeof P
     )
 
     React.useEffect(() => {
+        if (noScale) {
+            // Skip the scale animation entirely when noScale is set. The
+            // border highlight still fires via focusedClassName, but the
+            // transform is held steady so dense rows don't jitter.
+            scale.value = 1
+            return
+        }
         scale.set(withTiming(isFocused ? scaleTo : 1, { duration: 150 }))
-    }, [isFocused, scaleTo, scale])
+    }, [isFocused, scaleTo, scale, noScale])
 
     const animatedStyle = useAnimatedStyle(() => ({
         transform: [{ scale: scale.value }],
@@ -88,7 +110,7 @@ export const TvFocusablePressable = React.forwardRef<React.ComponentRef<typeof P
     return (
         <Pressable
             ref={combinedRef}
-            focusable={focusable ?? isTV}
+            focusable={focusable ?? true}
             onPress={onPress}
             onFocus={(e) => {
                 setIsFocused(true)
@@ -100,10 +122,10 @@ export const TvFocusablePressable = React.forwardRef<React.ComponentRef<typeof P
             }}
             onLayout={handleBlockLayout}
             {...{
-                nextFocusRight,
-                nextFocusLeft: blockLeft && isTV && leftBlockTag ? leftBlockTag : nextFocusLeft,
-                nextFocusDown: blockDown && isTV && downBlockTag ? downBlockTag : nextFocusDown,
-                nextFocusUp: blockUp && isTV && upBlockTag ? upBlockTag : nextFocusUp,
+                nextFocusRight: blockRight && rightBlockTag ? rightBlockTag : nextFocusRight,
+                nextFocusLeft: blockLeft && leftBlockTag ? leftBlockTag : nextFocusLeft,
+                nextFocusDown: blockDown && downBlockTag ? downBlockTag : nextFocusDown,
+                nextFocusUp: blockUp && upBlockTag ? upBlockTag : nextFocusUp,
                 hasTVPreferredFocus,
             } as any}
             {...rest}
@@ -111,9 +133,9 @@ export const TvFocusablePressable = React.forwardRef<React.ComponentRef<typeof P
             <Animated.View
                 className={cn(
                     className,
-                    isTV && isFocused && focusedClassName,
+                    isFocused && focusedClassName,
                 )}
-                style={isTV ? [style, animatedStyle] : style}
+                style={[style, animatedStyle]}
             >
                 {children}
             </Animated.View>

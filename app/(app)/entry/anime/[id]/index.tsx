@@ -12,7 +12,7 @@ import { router, useLocalSearchParams } from "expo-router"
 import * as React from "react"
 import { Text, TouchableOpacity, View } from "react-native"
 
-const VALID_VIEWS = new Set<AnimeEntryView>(["library", "torrentstream", "onlinestream", "info", "downloaded"])
+const VALID_VIEWS = new Set<AnimeEntryView>(["library", "torrentstream", "onlinestream", "downloaded"])
 
 export default function Screen() {
     const { id, initialView } = useLocalSearchParams<{ id: string, initialView?: string }>()

@@ -1,11 +1,11 @@
 import { useScanLocalFiles } from "@/api/hooks/scan.hooks"
 import { useCurrentUser } from "@/atoms/server.atoms"
 import { websocketAtom } from "@/atoms/websocket.atoms"
-import { ExternalPlayerPickerSheet } from "@/components/features/player/external-player-picker-sheet"
-import { ProfileMenuItem, ProfileMenuSection, ProfileMenuToggle, RowDivider } from "@/components/features/profile/profile-menu"
 import { ProfileTVLayout, TVActionPanel, TVPlayerOptions, type TVSection } from "@/components/features/profile/profile-tv-layout"
 import { ActiveStreamPanel } from "./active-stream"
+import { AnimeDownloadsPanel } from "@/components/features/profile/anime-downloads-panel"
 import { DownloadSettingsPanel } from "./download-settings"
+import { MangaDownloadsPanel } from "@/components/features/profile/manga-downloads-panel"
 import { LogsPanel } from "./logs"
 import { MyListsPanel } from "./my-lists"
 import { ServerDownloadsPanel } from "./server-downloads"
@@ -13,8 +13,7 @@ import { UnmatchedPanel } from "./unmatched"
 import { SafeView } from "@/components/layout/layout-view"
 import { Badge } from "@/components/ui/badge"
 import { Text as UIText } from "@/components/ui/text"
-import { useIsTV } from "@/hooks/use-device"
-import { TVFocusContext } from "@/contexts/tv-focus-context"
+import { TabFadeView } from "@/components/layout/tab-fade-view"
 import { useIOSScrollRefreshRateWorkaround } from "@/hooks/use-ios-scroll-refresh-rate-workaround"
 import { checkForAppReleaseUpdateManually } from "@/lib/app-release-updates"
 import {
@@ -33,19 +32,15 @@ import { checkForOtaUpdateManually, getOtaVersionInfo } from "@/lib/ota/updates"
 import { type ActiveStreamSession, activeStreamSessionAtom } from "@/lib/player"
 import { getPlatformExternalPlayers } from "@/lib/player/external-players"
 import { getPlayerPreferences } from "@/lib/player/player-preferences"
-import { cn } from "@/lib/utils"
 import { toast } from "@/lib/utils/toast"
-import { Ionicons } from "@expo/vector-icons"
 import { Image } from "expo-image"
 import { router } from "expo-router"
 import { useAtomValue } from "jotai"
 import * as React from "react"
-import { ActivityIndicator, Alert, findNodeHandle, ScrollView, Text, View } from "react-native"
-import { useSafeAreaInsets } from "react-native-safe-area-context"
+import { ActivityIndicator, Text, View } from "react-native"
 
 export default function ProfileScreen() {
     const user = useCurrentUser()
-    const insets = useSafeAreaInsets()
     const connectionState = useServerConnectionState()
     const [manualOffline, setManualOffline] = useManualOfflineMode()
     const activeStream = useAtomValue(activeStreamSessionAtom)
@@ -101,7 +96,6 @@ export default function ProfileScreen() {
     }, [isScanning, scanLibrary])
 
     useIOSScrollRefreshRateWorkaround()
-    const isTV = useIsTV()
 
     const downloadedAnime = useAllDownloadedAnime()
     const activeAnimeDownloads = useActiveAnimeDownloads()
@@ -112,36 +106,14 @@ export default function ProfileScreen() {
     const failedMangaDownloads = useFailedMangaDownloads()
     const totalMangaSize = useMangaDownloadDiskUsage()
 
-    const [playerPickerOpen, setPlayerPickerOpen] = React.useState(false)
     const [isClearingImageCache, setIsClearingImageCache] = React.useState(false)
     const [isCheckingAppReleaseUpdate, setIsCheckingAppReleaseUpdate] = React.useState(false)
     const [isCheckingOtaUpdate, setIsCheckingOtaUpdate] = React.useState(false)
     const otaVersionInfo = React.useMemo(() => getOtaVersionInfo(), [])
 
-    const [externalPlayerLabel, setExternalPlayerLabel] = React.useState(() =>
+    const [externalPlayerLabel] = React.useState(() =>
         getExternalPlayerLabel(getPlayerPreferences().externalPlayerTemplate),
     )
-
-    const handleChangeServerUrlPress = React.useCallback(() => {
-        Alert.alert(
-            "Change server URL?",
-            "",
-            [
-                { text: "Cancel", style: "cancel" },
-                {
-                    text: "Continue",
-                    onPress: () => router.push("/(out)/set-server-url" as never),
-                },
-            ],
-        )
-    }, [])
-
-    const handlePlayerPickerClose = (open: boolean) => {
-        setPlayerPickerOpen(open)
-        if (!open) {
-            setExternalPlayerLabel(getExternalPlayerLabel(getPlayerPreferences().externalPlayerTemplate))
-        }
-    }
 
     const clearImageCache = React.useCallback(() => {
         if (isClearingImageCache) {
@@ -172,25 +144,6 @@ export default function ProfileScreen() {
             }
         })()
     }, [isClearingImageCache])
-
-    const handleClearImageCachePress = React.useCallback(() => {
-        if (isClearingImageCache) {
-            return
-        }
-
-        Alert.alert(
-            "Clear image cache?",
-            "This removes cached posters, banners, and avatars. Images will download again the next time they are shown.",
-            [
-                { text: "Cancel", style: "cancel" },
-                {
-                    text: "Clear",
-                    style: "destructive",
-                    onPress: clearImageCache,
-                },
-            ],
-        )
-    }, [isClearingImageCache, clearImageCache])
 
     const handleTVClearImageCache = React.useCallback(() => {
         if (isClearingImageCache) return
@@ -237,7 +190,8 @@ export default function ProfileScreen() {
             ? "bg-amber-400"
             : "bg-red-400"
 
-    // ── Build sections for TV 3-column layout ─────────────────────────
+    // ── Build sections for TV 2-column layout ─────────────────────────
+    // On TV the right column shows the active section's settings panel.
     const sections: TVSection[] = [
         {
             id: "anilist",
@@ -250,7 +204,7 @@ export default function ProfileScreen() {
                     label: "My Lists",
                     detail: "Browse your anime & manga lists",
                     onPress: () => router.push("/(app)/(tabs)/(profile)/my-lists" as never),
-                    ...(isTV ? { renderRightPanel: ({ leftColumnNode }) => <MyListsPanel nextFocusLeft={leftColumnNode} /> } : {}),
+                    renderRightPanel: ({ leftColumnNode }) => <MyListsPanel nextFocusLeft={leftColumnNode} />,
                 },
             ],
         },
@@ -267,7 +221,7 @@ export default function ProfileScreen() {
                     detail: formatActiveStreamDetail(activeStream),
                     accessory: <ActiveStreamBadge status={activeStream.status} />,
                     onPress: () => router.push("/(app)/(tabs)/(profile)/active-stream" as never),
-                    ...(isTV ? { renderRightPanel: ({ leftColumnNode }) => <ActiveStreamPanel nextFocusLeft={leftColumnNode} /> } : {}),
+                    renderRightPanel: ({ leftColumnNode }) => <ActiveStreamPanel nextFocusLeft={leftColumnNode} />,
                 },
             ],
         } : { id: "streaming", title: "Streaming", icon: "cloud-outline", show: false, items: [] },
@@ -291,6 +245,7 @@ export default function ProfileScreen() {
                         ? <QueueBadges activeCount={activeAnimeDownloads.length} failedCount={failedAnimeDownloads.length} />
                         : undefined,
                     onPress: () => router.push("/(app)/(media)/anime-downloads" as never),
+                    renderRightPanel: ({ leftColumnNode }) => <AnimeDownloadsPanel nextFocusLeft={leftColumnNode} />,
                 },
                 {
                     id: "manga-downloads",
@@ -307,6 +262,7 @@ export default function ProfileScreen() {
                         ? <QueueBadges activeCount={activeMangaDownloads.length} failedCount={failedMangaDownloads.length} />
                         : undefined,
                     onPress: () => router.push("/(app)/(media)/manga-downloads" as never),
+                    renderRightPanel: ({ leftColumnNode }) => <MangaDownloadsPanel nextFocusLeft={leftColumnNode} />,
                 },
                 {
                     id: "download-settings",
@@ -314,7 +270,7 @@ export default function ProfileScreen() {
                     label: "Download Settings",
                     detail: "Wi-Fi, background, and queue preferences",
                     onPress: () => router.push("/(app)/(tabs)/(profile)/download-settings" as never),
-                    ...(isTV ? { renderRightPanel: ({ leftColumnNode }) => <DownloadSettingsPanel nextFocusLeft={leftColumnNode} /> } : {}),
+                    renderRightPanel: ({ leftColumnNode }) => <DownloadSettingsPanel nextFocusLeft={leftColumnNode} />,
                 },
             ],
         },
@@ -330,7 +286,7 @@ export default function ProfileScreen() {
                     label: "Server Download Queue",
                     detail: "Monitor active downloads running on the server",
                     onPress: () => router.push("/(app)/(tabs)/(profile)/server-downloads" as never),
-                    ...(isTV ? { renderRightPanel: ({ leftColumnNode }) => <ServerDownloadsPanel nextFocusLeft={leftColumnNode} /> } : {}),
+                    renderRightPanel: ({ leftColumnNode }) => <ServerDownloadsPanel nextFocusLeft={leftColumnNode} />,
                 },
                 {
                     id: "resolve-unmatched",
@@ -338,7 +294,7 @@ export default function ProfileScreen() {
                     label: "Resolve Unmatched",
                     detail: "Manually match unmatched files/folders to anime entries",
                     onPress: () => router.push("/(app)/(tabs)/(profile)/unmatched" as never),
-                    ...(isTV ? { renderRightPanel: ({ leftColumnNode }) => <UnmatchedPanel nextFocusLeft={leftColumnNode} /> } : {}),
+                    renderRightPanel: ({ leftColumnNode }) => <UnmatchedPanel nextFocusLeft={leftColumnNode} />,
                 },
                 {
                     id: "rescan-library",
@@ -371,9 +327,8 @@ export default function ProfileScreen() {
                     icon: "images-outline",
                     label: "Clear Image Cache",
                     detail: "Purge cached posters, banners, and avatars",
-                    ...(!isTV ? { onPress: handleClearImageCachePress } : {}),
                     hideChevron: true,
-                    ...(isTV ? { renderRightPanel: ({ leftColumnNode }) => <TVActionPanel description="This removes cached posters, banners, and avatars. Images will download again the next time they are shown." actionLabel="Clear cache" onAction={handleTVClearImageCache} isProcessing={isClearingImageCache} nextFocusLeft={leftColumnNode} /> } : {}),
+                    renderRightPanel: ({ leftColumnNode }) => <TVActionPanel description="This removes cached posters, banners, and avatars. Images will download again the next time they are shown." actionLabel="Clear cache" onAction={handleTVClearImageCache} isProcessing={isClearingImageCache} nextFocusLeft={leftColumnNode} />,
                 },
                 {
                     id: "logs",
@@ -381,7 +336,7 @@ export default function ProfileScreen() {
                     label: "Logs",
                     detail: "Crash records and temporary diagnostics",
                     onPress: () => router.push("/(app)/(tabs)/(profile)/logs" as never),
-                    ...(isTV ? { renderRightPanel: ({ leftColumnNode }) => <LogsPanel nextFocusLeft={leftColumnNode} /> } : {}),
+                    renderRightPanel: ({ leftColumnNode }) => <LogsPanel nextFocusLeft={leftColumnNode} />,
                 },
                 {
                     id: "check-new-release",
@@ -405,9 +360,8 @@ export default function ProfileScreen() {
                     id: "change-server-url",
                     icon: "server-outline",
                     label: "Change Server URL",
-                    ...(!isTV ? { onPress: handleChangeServerUrlPress } : {}),
                     hideChevron: true,
-                    ...(isTV ? { renderRightPanel: ({ leftColumnNode }) => <TVActionPanel description="Go to the server URL setup screen." actionLabel="Continue" onAction={handleTVChangeServerUrl} nextFocusLeft={leftColumnNode} /> } : {}),
+                    renderRightPanel: ({ leftColumnNode }) => <TVActionPanel description="Go to the server URL setup screen." actionLabel="Continue" onAction={handleTVChangeServerUrl} nextFocusLeft={leftColumnNode} />,
                 },
             ],
         },
@@ -421,243 +375,26 @@ export default function ProfileScreen() {
                     icon: "play-circle-outline",
                     label: "External Player",
                     detail: externalPlayerLabel,
-                    ...(!isTV ? { onPress: () => setPlayerPickerOpen(true) } : {}),
-                    ...(isTV ? { renderRightPanel: ({ leftColumnNode }) => <TVPlayerOptions nextFocusLeft={leftColumnNode} /> } : {}),
+                    renderRightPanel: ({ leftColumnNode }) => <TVPlayerOptions nextFocusLeft={leftColumnNode} />,
                 },
             ],
         },
     ]
 
-    // ── TV focus context ──────────────────────────────────────────────
-    const { setContentWrapperTag } = React.useContext(TVFocusContext)
-    const contentZoneRef = React.useRef<View>(null)
-
-    React.useLayoutEffect(() => {
-        if (contentZoneRef.current) {
-            setContentWrapperTag(findNodeHandle(contentZoneRef.current) as number)
-        }
-    }, [setContentWrapperTag])
-
     // ── Render ────────────────────────────────────────────────────────
-    if (isTV) {
-        return (
-            <SafeView>
-                <View
-                    ref={contentZoneRef}
-                    style={{ flex: 1 }}
-                >
-                    <ProfileTVLayout
-                        sections={sections}
-                        viewerName={viewer?.name}
-                        connectionLabel={connectionLabel}
-                        connectionColor={connectionColorClassName}
-                    />
-                    <View className="mx-5 pt-4 pb-4">
-                        <Text className="text-muted-foreground text-sm text-right">{`v${otaVersionInfo.appVersion}`} | {`${otaVersionInfo.otaVersion}`}</Text>
-                    </View>
-                </View>
-            </SafeView>
-        )
-    }
-
     return (
         <SafeView>
-            <ScrollView
-                className="flex-1 bg-background"
-                contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}
-                contentInsetAdjustmentBehavior="automatic"
-                showsVerticalScrollIndicator={false}
-            >
-                {/* header / user info */}
-                <View className="items-center pt-8 pb-6 gap-3">
-                    {viewer?.avatar?.large ? (
-                        <Image
-                            source={{ uri: viewer.avatar.large }}
-                            style={{ width: 80, height: 80, borderRadius: 40 }}
-                            contentFit="cover"
-                            transition={120}
-                        />
-                    ) : (
-                        <View className="w-20 h-20 rounded-full bg-white/10 items-center justify-center">
-                            <Ionicons name="person" size={32} color="rgba(255,255,255,0.5)" />
-                        </View>
-                    )}
-
-                    <Text className="text-xl font-bold text-foreground">
-                        {viewer?.name || "User"}
-                    </Text>
-
-
-                    <View className="flex-row items-center gap-1.5">
-                        <View
-                            className={cn("h-2 w-2 rounded-full", connectionColorClassName)}
-                        />
-                        <Text className="text-xs text-white/40">
-                            {connectionLabel}
-                        </Text>
-                    </View>
-                </View>
-
-
-                <View className="mx-4 gap-3">
-                    <ProfileMenuSection title="AniList">
-                        <ProfileMenuItem
-                            icon="list-outline"
-                            label="My Lists"
-                            detail="Browse your anime & manga lists"
-                            onPress={() => router.push("/(app)/(tabs)/(profile)/my-lists" as never)}
-                        />
-                    </ProfileMenuSection>
-
-                    {activeStream ? (
-                        <ProfileMenuSection title="Streaming">
-                            <ProfileMenuItem
-                                icon={activeStream.streamMode === "debrid" ? "cloud-outline" : "radio-outline"}
-                                label="Server Stream"
-                                detail={formatActiveStreamDetail(activeStream)}
-                                accessory={<ActiveStreamBadge status={activeStream.status} />}
-                                onPress={() => router.push("/(app)/(tabs)/(profile)/active-stream" as never)}
-                            />
-                        </ProfileMenuSection>
-                    ) : null}
-
-                    <ProfileMenuSection title="Downloads">
-                        <ProfileMenuItem
-                            icon="tv-outline"
-                            label="Anime Downloads"
-                            detail={formatDownloadMenuDetail({
-                                activeCount: activeAnimeDownloads.length,
-                                failedCount: failedAnimeDownloads.length,
-                                downloadedCount: downloadedAnime.length,
-                                sizeLabel: totalAnimeSize.formatted,
-                                mediaLabel: "anime",
-                            })}
-                            accessory={activeAnimeDownloads.length > 0 || failedAnimeDownloads.length > 0
-                                ? <QueueBadges activeCount={activeAnimeDownloads.length} failedCount={failedAnimeDownloads.length} />
-                                : undefined}
-                            onPress={() => router.push("/(app)/(media)/anime-downloads" as never)}
-                        />
-                        <RowDivider />
-                        <ProfileMenuItem
-                            icon="book-outline"
-                            label="Manga Downloads"
-                            detail={formatDownloadMenuDetail({
-                                activeCount: activeMangaDownloads.length,
-                                failedCount: failedMangaDownloads.length,
-                                downloadedCount: downloadedManga.length,
-                                sizeLabel: totalMangaSize.formatted,
-                                mediaLabel: "manga",
-                            })}
-                            accessory={activeMangaDownloads.length > 0 || failedMangaDownloads.length > 0
-                                ? <QueueBadges activeCount={activeMangaDownloads.length} failedCount={failedMangaDownloads.length} />
-                                : undefined}
-                            onPress={() => router.push("/(app)/(media)/manga-downloads" as never)}
-                        />
-                        <RowDivider />
-                        <ProfileMenuItem
-                            icon="options-outline"
-                            label="Download Settings"
-                            detail="Wi-Fi, background, and queue preferences"
-                            onPress={() => router.push("/(app)/(tabs)/(profile)/download-settings" as never)}
-                        />
-                    </ProfileMenuSection>
-
-                    {(isServerConnected && isLocalServer) && (
-                        <ProfileMenuSection title="Server Library">
-                            <ProfileMenuItem
-                                icon="cloud-download-outline"
-                                label="Server Download Queue"
-                                detail="Monitor active downloads running on the server"
-                                onPress={() => router.push("/(app)/(tabs)/(profile)/server-downloads" as never)}
-                            />
-                            <RowDivider />
-                            <ProfileMenuItem
-                                icon="alert-circle-outline"
-                                label="Resolve Unmatched"
-                                detail="Manually match unmatched files/folders to anime entries"
-                                onPress={() => router.push("/(app)/(tabs)/(profile)/unmatched" as never)}
-                            />
-                            <RowDivider />
-                            <ProfileMenuItem
-                                icon={isScanning ? "refresh" : "search-circle-outline"}
-                                label={isScanning ? (scanStatus || "Scanning library...") : "Rescan Library"}
-                                detail={isScanning ? `Progress: ${scanProgress ?? 0}%` : "Scan files in your host library"}
-                                accessory={isScanning ? <ActivityIndicator size="small" color="rgba(255,255,255,0.45)" /> : undefined}
-                                onPress={handleRescan}
-                                hideChevron={isScanning}
-                            />
-                        </ProfileMenuSection>
-                    )}
-
-                    <ProfileMenuSection title="App">
-                        <ProfileMenuToggle
-                            icon="cloud-offline-outline"
-                            label="Offline Mode"
-                            detail="Force offline behavior even when connected"
-                            value={manualOffline}
-                            onToggle={setManualOffline}
-                        />
-                        <RowDivider />
-                        <ProfileMenuItem
-                            icon="images-outline"
-                            label="Clear Image Cache"
-                            detail="Purge cached posters, banners, and avatars"
-                            onPress={handleClearImageCachePress}
-                            hideChevron
-                        />
-                        <RowDivider />
-                        <ProfileMenuItem
-                            icon="document-text-outline"
-                            label="Logs"
-                            detail="Crash records and temporary diagnostics"
-                            onPress={() => router.push("/(app)/(tabs)/(profile)/logs" as never)}
-                        />
-                        <RowDivider />
-                        <ProfileMenuItem
-                            icon="reload-circle-outline"
-                            label="Check New Release"
-                            detail={isCheckingAppReleaseUpdate ? "Checking releases" : undefined}
-                            accessory={isCheckingAppReleaseUpdate ? <ActivityIndicator size="small" color="rgba(255,255,255,0.45)" /> : undefined}
-                            onPress={handleCheckForAppReleaseUpdatePress}
-                            hideChevron
-                        />
-                        <RowDivider />
-                        <ProfileMenuItem
-                            icon="code-download-outline"
-                            label="Check OTA Update"
-                            detail={isCheckingOtaUpdate ? "Checking update server" : undefined}
-                            accessory={isCheckingOtaUpdate ? <ActivityIndicator size="small" color="rgba(255,255,255,0.45)" /> : undefined}
-                            onPress={handleCheckForOtaUpdatePress}
-                            hideChevron
-                        />
-                        <RowDivider />
-                        <ProfileMenuItem
-                            icon="server-outline"
-                            label="Change Server URL"
-                            onPress={handleChangeServerUrlPress}
-                            hideChevron
-                        />
-                    </ProfileMenuSection>
-
-                    <ProfileMenuSection title="Player">
-                        <ProfileMenuItem
-                            icon="play-circle-outline"
-                            label="External Player"
-                            detail={externalPlayerLabel}
-                            onPress={() => setPlayerPickerOpen(true)}
-                        />
-                    </ProfileMenuSection>
-                </View>
-
-                <ExternalPlayerPickerSheet
-                    open={playerPickerOpen}
-                    onOpenChange={handlePlayerPickerClose}
+            <TabFadeView>
+                <ProfileTVLayout
+                    sections={sections}
+                    viewerName={viewer?.name}
+                    connectionLabel={connectionLabel}
+                    connectionColor={connectionColorClassName}
                 />
-
-                <View className="mx-5 pt-4">
+                <View className="mx-5 pt-4 pb-4">
                     <Text className="text-muted-foreground text-sm text-right">{`v${otaVersionInfo.appVersion}`} | {`${otaVersionInfo.otaVersion}`}</Text>
                 </View>
-            </ScrollView>
+            </TabFadeView>
         </SafeView>
     )
 }

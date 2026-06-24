@@ -1,6 +1,25 @@
 import React from "react"
+import { Platform } from "react-native"
 
 export function useSwipeSeek() {
+    // TV has no touch — swipe-to-seek is dead code, and the swipe-seek
+    // overlay never renders on TV (the orchestrator's
+    // `swipeSeek.swipeSeeking && <SwipeSeekOverlay>` guard handles that
+    // naturally once this hook returns null). Returning shape-compatible
+    // stub refs also keeps the orchestrator untouched.
+    if (Platform.isTV) {
+        const noop = (..._args: unknown[]): void => {}
+        return {
+            swipeSeeking: null,
+            swipeStartTimeRef: { current: 0 },
+            swipeActivatedRef: { current: false },
+            swipeStartXRef: { current: 0 },
+            swipeSeekingRef: { current: null },
+            panGestureModeRef: { current: null as "seek" | "side-adjust" | null },
+            scheduleSwipeSeekingUpdate: noop,
+        }
+    }
+
     const [swipeSeeking, setSwipeSeeking] = React.useState<{ startTime: number; currentTime: number } | null>(null)
     const swipeStartTimeRef = React.useRef(0)
     const swipeActivatedRef = React.useRef(false)

@@ -10,7 +10,7 @@ import { LinearGradient } from "expo-linear-gradient"
 import { router } from "expo-router"
 import { capitalize } from "lodash"
 import * as React from "react"
-import { InteractionManager, Pressable, Text, View } from "react-native"
+import { Pressable, Text, View } from "react-native"
 import Animated, { SharedValue, useAnimatedStyle, useSharedValue } from "react-native-reanimated"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { cn } from "@/lib/utils"
@@ -122,18 +122,12 @@ function MediaEntryHeaderBackgroundInner({ entry, scrollY }: MediaEntryHeaderBac
 
         setShouldRenderBannerImage(false)
 
-        let timeoutId: ReturnType<typeof setTimeout> | undefined
-        const task = InteractionManager.runAfterInteractions(() => {
-            timeoutId = setTimeout(() => {
-                setShouldRenderBannerImage(true)
-            }, HEADER_IMAGE_MOUNT_DELAY_MS)
-        })
+        const timeoutId = setTimeout(() => {
+            setShouldRenderBannerImage(true)
+        }, HEADER_IMAGE_MOUNT_DELAY_MS)
 
         return () => {
-            task.cancel()
-            if (timeoutId) {
-                clearTimeout(timeoutId)
-            }
+            clearTimeout(timeoutId)
         }
     }, [bannerImageUri])
 

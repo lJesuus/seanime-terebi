@@ -1,7 +1,7 @@
 import { TvFocusablePressable } from "@/components/ui/tv-focusable"
 import { cn } from "@/lib/utils"
 import * as React from "react"
-import { Platform, View } from "react-native"
+import { View } from "react-native"
 
 ////////////////////////// Container
 
@@ -11,7 +11,7 @@ type SheetFooterProps = {
 }
 
 export function SheetFooter({ children, className }: SheetFooterProps) {
-    return <View className={cn("flex-row gap-x-3", _isTV && "justify-center gap-x-6", className)}>{children}</View>
+    return <View className={cn("flex-row justify-center gap-x-6", className)}>{children}</View>
 }
 
 ////////////////////////// Footer button
@@ -28,11 +28,10 @@ type SheetFooterButtonProps = {
     blockDown?: boolean
 }
 
-const _isTV = Platform.isTV
 const VARIANT_CLASSES: Record<SheetFooterButtonVariant, string> = {
-    cancel: `${_isTV ? "h-14 flex-1 min-w-[180px]" : "h-12 flex-1"} items-center justify-center rounded-2xl border border-white/10 bg-white/5 active:bg-white/10`,
-    primary: `${_isTV ? "h-14 flex-1 min-w-[180px]" : "h-12 flex-1"} items-center justify-center rounded-2xl bg-primary active:opacity-80`,
-    destructive: `${_isTV ? "h-14 flex-1 min-w-[180px]" : "h-12 flex-1"} items-center justify-center rounded-2xl bg-red-500/10 border border-red-500/20 active:opacity-80`,
+    cancel: "h-14 flex-1 min-w-[180px] items-center justify-center rounded-2xl border border-white/10 bg-white/5 active:bg-white/10",
+    primary: "h-14 flex-1 min-w-[180px] items-center justify-center rounded-2xl bg-primary active:opacity-80",
+    destructive: "h-14 flex-1 min-w-[180px] items-center justify-center rounded-2xl bg-red-500/10 border border-red-500/20 active:opacity-80",
 }
 
 // Focused state mirrors the drawer close button's TV-focus ring so all

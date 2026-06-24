@@ -22,38 +22,35 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
             "expo-channel-name": "stable",
         },
     },
+    // tvOS is shipped from this `ios` config under the dedicated
+    // `appleTV` EAS build profile. iPhone / iPad handset targets are
+    // dropped — `supportsTablet` is removed and Info.plist phone-only
+    // keys (LSApplicationQueriesSchemes, withPiPSupport plugin) are
+    // removed.
     ios: {
         buildNumber: "20",
         appleTeamId: process.env.EXPO_APPLE_TEAM_ID || "",
-        supportsTablet: true,
         bundleIdentifier: "app.seanime.tenji",
         infoPlist: {
             NSLocalNetworkUsageDescription: "Seanime needs local network access to connect to your server on your home network.",
             UIBackgroundModes: [
                 "audio",
             ],
-            LSApplicationQueriesSchemes: [
-                "vlc",
-                "outplayer",
-                "infuse",
-                "nplayer-http",
-                "oplayer",
-                "mangoplayer",
-            ],
             UISupportedInterfaceOrientations: [
-                "UIInterfaceOrientationPortrait",
-                "UIInterfaceOrientationPortraitUpsideDown",
                 "UIInterfaceOrientationLandscapeLeft",
                 "UIInterfaceOrientationLandscapeRight",
             ],
-            "UISupportedInterfaceOrientations~ipad": [
-                "UIInterfaceOrientationPortrait",
-                "UIInterfaceOrientationPortraitUpsideDown",
-                "UIInterfaceOrientationLandscapeLeft",
-                "UIInterfaceOrientationLandscapeRight",
-            ],
+            // tvOS apps that talk to a LAN server need the local-networking
+            // ATS exception. Without this, http://192.168.x.x requests are
+            // silently blocked.
+            NSAppTransportSecurity: {
+                NSAllowsLocalNetworking: true,
+            },
         },
     },
+    // Android: TV-only build. `supportsTV: true` enables the Android TV
+    // launcher / banner / Leanback resources. Phone and tablet form-factors
+    // are no longer supported.
     android: {
         jsEngine: "hermes",
         versionCode: 20,
@@ -62,11 +59,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
             foregroundImage: "./src/assets/images/adaptive-icon.png",
             backgroundColor: "#171140",
         },
-        permissions: [
-            "WRITE_SETTINGS",
-        ],
         package: "app.seanime.tenji",
         supportsTV: true,
+        tvBanner: "./src/assets/images/tv-banner.png",
     } as any,
     plugins: [
         "expo-router",
@@ -86,15 +81,11 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
                 },
             },
         ],
-        "@react-native-community/datetimepicker",
         "./plugins/withAndroidExternalPlayerQueries",
         "./plugins/withAndroidLanCleartext",
         "./plugins/withAndroidReactNativeArchitectures",
         "./plugins/withLibcppPickFirst",
-        "./plugins/withPiPSupport",
         "./plugins/withMPVKitiOS",
-        "./plugins/withExpoDownloadManageriOS",
-        "./plugins/withExpoOfflineLoggeriOS",
         "expo-updates",
         "expo-image",
     ],
@@ -102,5 +93,4 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         typedRoutes: true,
         reactCompiler: true,
     },
-});
-
+})

@@ -22,7 +22,7 @@ import { useIsFocused } from "@react-navigation/native"
 import { router, useLocalSearchParams } from "expo-router"
 import * as React from "react"
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { InteractionManager, RefreshControl, ScrollView, Text, TouchableOpacity, View } from "react-native"
+import { RefreshControl, ScrollView, Text, TouchableOpacity, View } from "react-native"
 import Animated, { FadeIn, useSharedValue } from "react-native-reanimated"
 import Reanimated, { useAnimatedScrollHandler } from "react-native-reanimated"
 
@@ -69,7 +69,7 @@ export function MangaEntryScreen({ initialView = "chapters" }: MangaEntryScreenP
     const [selectedChapterIds, setSelectedChapterIds] = useState<Set<string>>(new Set())
     const selectionMode = selectedChapterIds.size > 0
 
-    useIOSScrollRefreshRateWorkaround(true)
+    useIOSScrollRefreshRateWorkaround()
 
     const toggleChapter = useCallback((chapterId: string) => {
         setSelectedChapterIds(prev => {
@@ -96,13 +96,15 @@ export function MangaEntryScreen({ initialView = "chapters" }: MangaEntryScreenP
     useEffect(() => {
         setIsPrimaryBodyReady(false)
 
-        const task = InteractionManager.runAfterInteractions(() => {
+        // `InteractionManager.runAfterInteractions()` was deprecated in RN;
+        // replace with a 0ms setTimeout that re-runs once the React mount flush
+        // settles. The previous effect had the same primary intent: defer
+        // mounting-heavy children until after the current frame.
+        const timeout = setTimeout(() => {
             setIsPrimaryBodyReady(true)
-        })
+        }, 0)
 
-        return () => {
-            task.cancel()
-        }
+        return () => clearTimeout(timeout)
     }, [id])
 
     useDevScreenProfiler(`manga-entry:${id ?? "unknown"}`, isPrimaryBodyReady)

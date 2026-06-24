@@ -9,8 +9,9 @@ import { useManualOfflineMode } from "@/lib/offline"
 import { isServerVersionSupported, MIN_SERVER_VERSION } from "@/lib/server-version"
 import { router, usePathname } from "expo-router"
 import React from "react"
-import { Alert, Image, Platform, Pressable, View } from "react-native"
+import { Alert, Platform, Pressable, View } from "react-native"
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated"
+import { Image } from "expo-image"
 
 export function ServerUrlWrapper({ children }: { children: React.ReactNode }) {
 
@@ -170,7 +171,7 @@ export function ServerDataWrapper({ children }: { children: React.ReactNode }) {
 
     if (isConnectingOrAuthenticating && showOfflineFallback) {
         return <View className="bg-background flex-1 justify-center items-center gap-6 px-8">
-            <Image source={IMAGES.logo2} style={{ width: 128, height: 128 }} resizeMode="contain" />
+            <Image source={IMAGES.logo2} style={{ width: 128, height: 128 }} contentFit="contain" />
             <View className="items-center gap-1.5">
                 <Text className="text-white text-base font-semibold">Connection is taking longer than expected</Text>
                 <Text className="text-white/45 text-sm text-center">The server might be offline. You can switch to offline mode or update the server
@@ -192,7 +193,7 @@ export function ServerDataWrapper({ children }: { children: React.ReactNode }) {
 
     if (isLoading && !effectiveStatus) {
         return <View className="bg-background flex-1 justify-center items-center gap-4">
-            <Image source={IMAGES.logo2} style={{ width: 128, height: 128 }} resizeMode="contain" />
+            <Image source={IMAGES.logo2} style={{ width: 128, height: 128 }} contentFit="contain" />
             <TVFallbackButton
                 onPress={handleChangeUrlPress}
                 label="Change URL"
@@ -203,14 +204,14 @@ export function ServerDataWrapper({ children }: { children: React.ReactNode }) {
 
     if (requiresServerAuth && (!serverAuthToken || authVerification.isLoading || isInvalidServerAuth)) {
         return <View className="bg-background flex-1 justify-center items-center gap-4">
-            <Image source={IMAGES.logo2} style={{ width: 128, height: 128 }} resizeMode="contain" />
+            <Image source={IMAGES.logo2} style={{ width: 128, height: 128 }} contentFit="contain" />
             <Text className="text-sm text-white/50">Authenticating server connection...</Text>
         </View>
     }
 
     if (isUnsupportedServerVersion) {
         return <View className="bg-background flex-1 items-center justify-center gap-5 px-8">
-            <Image source={IMAGES.logo2} style={{ width: 104, height: 104 }} resizeMode="contain" />
+            <Image source={IMAGES.logo2} style={{ width: 104, height: 104 }} contentFit="contain" />
             <View className="items-center gap-2">
                 <Text className="text-center text-xl font-bold text-white">Server update required</Text>
                 <Text className="text-center text-sm leading-5 text-white/55">

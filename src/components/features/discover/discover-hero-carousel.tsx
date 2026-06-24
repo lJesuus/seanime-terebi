@@ -8,11 +8,12 @@ import { cn } from "@/lib/utils"
 import { LinearGradient } from "expo-linear-gradient"
 import { router } from "expo-router"
 import React from "react"
-import { InteractionManager, NativeScrollEvent, NativeSyntheticEvent, Platform, Pressable, ScrollView, Text, useWindowDimensions, View } from "react-native"
+import { NativeScrollEvent, NativeSyntheticEvent, Pressable, ScrollView, Text, useWindowDimensions, View } from "react-native"
 import Animated, {
     Extrapolation,
     interpolate,
     SharedValue,
+    useAnimatedRef,
     useAnimatedScrollHandler,
     useAnimatedStyle,
     useSharedValue,
@@ -20,11 +21,12 @@ import Animated, {
     withSequence,
     withTiming,
 } from "react-native-reanimated"
+import type { AnimatedRef } from "react-native-reanimated"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 
-export const HERO_HEIGHT = Platform.isTV ? 480 : 320
-const HERO_TITLE_FONT_SIZE = Platform.isTV ? 44 : 26
-const HERO_GENRE_FONT_SIZE = Platform.isTV ? 16 : 10
+export const HERO_HEIGHT = 480
+const HERO_TITLE_FONT_SIZE = 44
+const HERO_GENRE_FONT_SIZE = 16
 const AUTO_ROTATE_INTERVAL = 10000
 const MAX_ITEMS = 12
 const HERO_BACKGROUND = COLORS.background
@@ -59,7 +61,13 @@ type DiscoverHeroItem = AL_BaseAnime | AL_BaseManga
 export type DiscoverHeroCarouselController = {
     currentIndex: number
     screenWidth: number
-    scrollRef: React.RefObject<ScrollView | null>
+    // Use AnimatedRef (not React.RefObject) so the carousel's ScrollView
+    // ref survives being captured by `useAnimatedScrollHandler`
+    // below. A plain JS useRef would trigger reanimated's strict
+    // "Tried to modify key `current`" warning once JavaScript mutates
+    // `scrollRef.current` (e.g. via scrollToIndex / setInterval dot
+    // presses) after the worklet has already captured it.
+    scrollRef: AnimatedRef<ScrollView>
     scrollX: SharedValue<number>
     scrollToIndex: (index: number, animated?: boolean) => void
     handleDotPress: (index: number) => void
@@ -96,10 +104,15 @@ export function useDiscoverHeroCarouselController(media: DiscoverHeroItem[], isA
     const showSidebar = useShowSidebar()
     const carouselWidth = showSidebar ? screenWidth - 80 : screenWidth
     const [currentIndex, setCurrentIndex] = React.useState(0)
-    const scrollRef = React.useRef<ScrollView | null>(null)
+    // useAnimatedRef (not React.useRef) so the ref can be safely
+    // captured by useAnimatedScrollHandler worklets without reanimated
+    // 3.x complaining about a `.current` mutation across the worklet
+    // boundary. The same ref is also passed to <Animated.ScrollView>.
+    const scrollRef = useAnimatedRef<ScrollView>()
     const scrollX = useSharedValue(0)
     const isInteracting = React.useRef(false)
     const carouselFocusedRef = React.useRef(false)
+    const targetIndexRef = React.useRef(0)
     const mediaKey = React.useMemo(() => media.map(item => String(item.id)).join(":"), [media])
 
     const scrollToIndex = React.useCallback(
@@ -107,11 +120,10 @@ export function useDiscoverHeroCarouselController(media: DiscoverHeroItem[], isA
             if (media.length === 0) return
 
             const safeIndex = Math.max(0, Math.min(index, media.length - 1))
+            targetIndexRef.current = safeIndex
             scrollRef.current?.scrollTo({ x: safeIndex * carouselWidth, animated })
-            scrollX.set(safeIndex * carouselWidth)
-            setCurrentIndex(safeIndex)
         },
-        [media.length, carouselWidth, scrollX],
+        [media.length, carouselWidth],
     )
 
     React.useEffect(() => {
@@ -121,6 +133,9 @@ export function useDiscoverHeroCarouselController(media: DiscoverHeroItem[], isA
             return
         }
 
+        scrollX.set(0)
+        setCurrentIndex(0)
+        targetIndexRef.current = 0
         scrollToIndex(0, false)
     }, [mediaKey, media.length, scrollToIndex, scrollX])
 
@@ -138,11 +153,11 @@ export function useDiscoverHeroCarouselController(media: DiscoverHeroItem[], isA
         const interval = setInterval(() => {
             if (isInteracting.current || carouselFocusedRef.current) return
 
-            scrollToIndex((currentIndex + 1) % media.length)
+            scrollToIndex((targetIndexRef.current + 1) % media.length)
         }, AUTO_ROTATE_INTERVAL)
 
         return () => clearInterval(interval)
-    }, [currentIndex, isActive, media.length, scrollToIndex])
+    }, [isActive, media.length, scrollToIndex])
 
     React.useEffect(() => {
         if (isActive) return
@@ -203,18 +218,12 @@ export function DiscoverHeroCarouselBackdrop({ media, currentIndex, screenWidth,
 
         setShouldRenderHeroImages(false)
 
-        let timeoutId: ReturnType<typeof setTimeout> | undefined
-        const task = InteractionManager.runAfterInteractions(() => {
-            timeoutId = setTimeout(() => {
-                setShouldRenderHeroImages(true)
-            }, HERO_IMAGE_MOUNT_DELAY_MS)
-        })
+        const timeoutId = setTimeout(() => {
+            setShouldRenderHeroImages(true)
+        }, HERO_IMAGE_MOUNT_DELAY_MS)
 
         return () => {
-            task.cancel()
-            if (timeoutId) {
-                clearTimeout(timeoutId)
-            }
+            clearTimeout(timeoutId)
         }
     }, [media.length, mediaKey])
 
@@ -369,7 +378,14 @@ function DiscoverHeroBackdropImage({
                 source={{ uri }}
                 contentFit="cover"
                 cachePolicy="disk"
-                priority="low"
+                // Hero banner is the very first thing the user sees on
+                // the Discover tab. Bumping priority from "low" to
+                // "high" makes expo-image allocate network bandwidth to
+                // the banner image up-front instead of waiting for it
+                // to clear the queue behind the 5 other section's
+                // thumbnails. The translateX parallax below still runs
+                // on the UI thread so this doesn't block touch.
+                priority="high"
                 allowDownscaling
                 transition={0}
                 style={{
@@ -388,57 +404,28 @@ function DiscoverHeroDot({
     index,
     isActive,
     isTV,
-    onFocus,
-    onBlur,
     onPress,
 }: {
     index: number
     isActive: boolean
     isTV: boolean
-    onFocus: () => void
-    onBlur?: () => void
     onPress: () => void
 }) {
-    const [isFocused, setIsFocused] = React.useState(false)
-    const scale = useSharedValue(1)
-
-    React.useEffect(() => {
-        scale.set(withTiming(isFocused ? 1.3 : 1, { duration: 150 }))
-    }, [isFocused, scale])
-
-    const animatedStyle = useAnimatedStyle(() => ({
-        transform: [{ scale: scale.value }],
-    }))
-
     return (
         <Pressable
-            focusable={isTV}
-            hasTVPreferredFocus={isTV && index === 0}
-            onFocus={() => {
-                setIsFocused(true)
-                onFocus()
-            }}
-            onBlur={() => {
-                setIsFocused(false)
-                onBlur?.()
-            }}
+            focusable={false}
             onPress={onPress}
             hitSlop={isTV ? 16 : 10}
         >
-            <Animated.View
-                style={[
-                    {
-                        width: isActive ? (isTV ? 32 : 22) : (isTV ? 12 : 8),
-                        height: isTV ? 5 : 3,
-                        borderRadius: isTV ? 3 : 2,
-                        backgroundColor: isActive
-                            ? "rgba(255,255,255,0.9)"
-                            : isFocused
-                                ? "rgba(255,255,255,0.6)"
-                                : "rgba(255,255,255,0.28)",
-                    },
-                    isTV ? animatedStyle : undefined,
-                ]}
+            <View
+                style={{
+                    width: isActive ? (isTV ? 32 : 22) : (isTV ? 12 : 8),
+                    height: isTV ? 5 : 3,
+                    borderRadius: isTV ? 3 : 2,
+                    backgroundColor: isActive
+                        ? "rgba(255,255,255,0.9)"
+                        : "rgba(255,255,255,0.28)",
+                }}
             />
         </Pressable>
     )
@@ -508,10 +495,7 @@ function DiscoverHeroItem({
                 }}
             >
                 <Animated.View
-                    className={cn(
-                        "flex-1",
-                        isFocused && isTV && "border-2 border-brand-400/80",
-                    )}
+                    className={"flex-1"}
                     style={isTV ? animatedStyle : undefined}
                 />
             </Pressable>
@@ -520,7 +504,7 @@ function DiscoverHeroItem({
                 pointerEvents="none"
                 style={{
                     position: "absolute",
-                    bottom: isTV ? 60 : 44,
+                    bottom: isTV ? 80 : 56,
                     left: 0,
                     right: 0,
                     paddingHorizontal: isTV ? 32 : 20,
@@ -605,18 +589,24 @@ export function DiscoverHeroCarouselInteractionLayer({ media, type, controller, 
         },
     })
     const carouselBlurTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+    const carouselWasFocusedRef = React.useRef(false)
 
-    const handleCarouselChildFocus = React.useCallback(() => {
+    const handleCarouselChildFocus = React.useCallback((index: number) => {
         if (carouselBlurTimer.current) {
             clearTimeout(carouselBlurTimer.current)
             carouselBlurTimer.current = null
         }
+        controller.scrollToIndex(index)
         controller.notifyFocusEnter()
-        onCarouselFocus?.()
+        if (!carouselWasFocusedRef.current) {
+            carouselWasFocusedRef.current = true
+            onCarouselFocus?.()
+        }
     }, [controller, onCarouselFocus])
 
     const handleCarouselChildBlur = React.useCallback(() => {
         carouselBlurTimer.current = setTimeout(() => {
+            carouselWasFocusedRef.current = false
             controller.notifyFocusExit()
         }, 50)
     }, [controller])
@@ -646,7 +636,7 @@ export function DiscoverHeroCarouselInteractionLayer({ media, type, controller, 
                         width={controller.screenWidth}
                         height={HERO_HEIGHT}
                         index={index}
-                        onFocus={handleCarouselChildFocus}
+                        onFocus={() => handleCarouselChildFocus(index)}
                         onBlur={handleCarouselChildBlur}
                     />
                 ))}
@@ -656,7 +646,7 @@ export function DiscoverHeroCarouselInteractionLayer({ media, type, controller, 
                 <View
                     style={{
                         position: "absolute",
-                        bottom: isTV ? 24 : 16,
+                        bottom: isTV ? 36 : 24,
                         left: isTV ? 32 : 20,
                         flexDirection: "row",
                         alignItems: "center",
@@ -669,11 +659,6 @@ export function DiscoverHeroCarouselInteractionLayer({ media, type, controller, 
                             index={idx}
                             isActive={idx === controller.currentIndex}
                             isTV={isTV}
-                            onFocus={() => {
-                                controller.scrollToIndex(idx)
-                                handleCarouselChildFocus()
-                            }}
-                            onBlur={handleCarouselChildBlur}
                             onPress={() => controller.handleDotPress(idx)}
                         />
                     ))}

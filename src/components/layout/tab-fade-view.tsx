@@ -6,7 +6,7 @@ import { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reani
 
 export function TabFadeView({ children, style }: { children: React.ReactNode; style?: object }) {
     const opacity = useSharedValue(0)
-    const { setContentWrapperTag } = React.useContext(TVFocusContext)
+    const { setContentWrapperTag, currentTabButtonTag } = React.useContext(TVFocusContext)
     const rootRef = React.useRef<FocusableViewHandle>(null)
 
     React.useLayoutEffect(() => {
@@ -30,6 +30,7 @@ export function TabFadeView({ children, style }: { children: React.ReactNode; st
         <FocusableView
             ref={rootRef}
             style={[{ flex: 1 }, animStyle, style]}
+            {...(currentTabButtonTag ? { nextFocusLeft: currentTabButtonTag } as any : {})}
         >
             {children}
         </FocusableView>

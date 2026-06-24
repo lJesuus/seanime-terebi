@@ -26,6 +26,16 @@ export function useControlsVisibility(gRef: React.RefObject<GestureRefs>) {
     }, [])
 
     const scheduleHide = React.useCallback(() => {
+        // Suspend auto-hide while the settings/lock-overlay drawer is
+        // mounted. The user explicitly asked for the controls bar (and the
+        // Settings button in particular) to stay visible whenever the
+        // settings drawer is on screen, so the post-close focus bounce can
+        // land on a real, interactive element instead of a dead node or
+        // the outer wrapper. The `panel` value here comes from
+        // `syncGestureRef`, which mirrors the latest rendered state into
+        // `gRef.current` on every render — so a freshly-opened panel is
+        // observed synchronously by the next scheduleHide call.
+        if (gRef.current.panel != null) return
         clearHideTimer()
         const { paused, controlsLocked: locked } = gRef.current
         if (paused) return

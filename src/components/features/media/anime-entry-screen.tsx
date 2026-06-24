@@ -20,7 +20,7 @@ import { useIsFocused } from "@react-navigation/native"
 import { useAtom } from "jotai"
 import * as React from "react"
 import { useEffect, useMemo, useState } from "react"
-import { InteractionManager, RefreshControl, View } from "react-native"
+import { RefreshControl, View } from "react-native"
 import Animated, { FadeIn, useSharedValue } from "react-native-reanimated"
 
 type AnimeEntryScreenProps = {
@@ -137,12 +137,19 @@ export function AnimeEntryScreen({ initialView = "library" }: AnimeEntryScreenPr
     useEffect(() => {
         setIsPrimaryBodyReady(false)
 
-        const task = InteractionManager.runAfterInteractions(() => {
+        // Defer the "primary body ready" signal to the next frame so the
+        // first paint / focus settle has a chance to commit before any
+        // deferred content (heavy hero artwork, episode lists) starts
+        // mounting. `InteractionManager.runAfterInteractions` would have
+        // done this before but is deprecated; `requestAnimationFrame` is
+        // the closest modern equivalent (defers to next paint commit).
+
+        const rafId = requestAnimationFrame(() => {
             setIsPrimaryBodyReady(true)
         })
 
         return () => {
-            task.cancel()
+            cancelAnimationFrame(rafId)
         }
     }, [id])
 

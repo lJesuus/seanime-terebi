@@ -14,6 +14,7 @@ import { useIsServerConnected } from "@/lib/offline"
 
 import { useIsFocused } from "@react-navigation/native"
 import { router, useFocusEffect } from "expo-router"
+import { useSetAtom } from "jotai"
 import * as React from "react"
 import { RefreshControl, View } from "react-native"
 import Animated, { useAnimatedScrollHandler, useSharedValue } from "react-native-reanimated"

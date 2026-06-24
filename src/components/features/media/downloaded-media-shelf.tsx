@@ -1,7 +1,6 @@
 import { AL_BaseAnime, AL_BaseManga } from "@/api/generated/types"
 import { MediaEntryCard } from "@/components/features/media/media-entry-card"
 import { Animations } from "@/components/shared/animations"
-import { TVFocusContext } from "@/contexts/tv-focus-context"
 import { useLibraryShelvesFocus } from "@/hooks/use-library-shelves-focus"
 import { Ionicons } from "@expo/vector-icons"
 import { router } from "expo-router"
@@ -70,10 +69,6 @@ function DownloadCountOverlay({ count }: { count: number }) {
 
 export function DownloadedMediaShelf<T extends "anime" | "manga">({ type, items }: DownloadedMediaShelfProps<T>) {
     const { onFocus: notifyShelfFocusIn, onBlur: notifyShelfFocusOut } = useLibraryShelvesFocus()
-    const { sidebarTag } = React.useContext(TVFocusContext)
-    // When the user is focused on the leftmost downloaded card, DPAD
-    // LEFT should jump straight to the sidebar.
-    const firstCardNextFocusLeft = sidebarTag ?? undefined
 
     if (items.length === 0) return null
 
@@ -85,7 +80,7 @@ export function DownloadedMediaShelf<T extends "anime" | "manga">({ type, items 
         index,
     }), [])
 
-    const renderItem = React.useCallback(({ item, index }: ListRenderItemInfo<DownloadedMediaShelfItem>) => {
+    const renderItem = React.useCallback(({ item }: ListRenderItemInfo<DownloadedMediaShelfItem>) => {
         const media = type === "anime"
             ? fromDownloadedAnimeMedia(item)
             : fromDownloadedMangaMedia(item)
@@ -105,10 +100,9 @@ export function DownloadedMediaShelf<T extends "anime" | "manga">({ type, items 
                 }}
                 onFocus={notifyShelfFocusIn}
                 onBlur={notifyShelfFocusOut}
-                nextFocusLeft={index === 0 ? firstCardNextFocusLeft : undefined}
             />
         )
-    }, [type, notifyShelfFocusIn, notifyShelfFocusOut, firstCardNextFocusLeft])
+    }, [type, notifyShelfFocusIn, notifyShelfFocusOut])
 
     return (
         <Animated.View

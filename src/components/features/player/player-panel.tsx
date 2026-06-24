@@ -159,13 +159,6 @@ export function PlayerPanelOverlay(props: PlayerPanelOverlayProps) {
                     <Text className="ml-2.5 flex-1 text-sm font-bold text-white">
                         {meta.title}
                     </Text>
-                    <TvFocusablePressable
-                        onPress={onClose}
-                        hitSlop={8}
-                        className="rounded-full bg-white/5 p-1.5"
-                    >
-                        <X size={14} color="rgba(255,255,255,0.55)" />
-                    </TvFocusablePressable>
                 </View>
 
                 <ScrollView
@@ -305,6 +298,7 @@ function PanelSelectableRow({
     disabled,
     children,
     className,
+    hasTVPreferredFocus,
 }: {
     active?: boolean
     borderTop?: boolean
@@ -312,6 +306,13 @@ function PanelSelectableRow({
     disabled?: boolean
     children: React.ReactNode
     className?: string
+    /**
+     * Forwarded to `TvFocusablePressable`. Callers (e.g. the Settings
+     * panel) use this to land TV focus directly on the first actionable
+     * row when the panel opens, instead of leaving it to RN TV's spatial
+     * search.
+     */
+    hasTVPreferredFocus?: boolean
 }) {
     return (
         <TvFocusablePressable
@@ -319,6 +320,7 @@ function PanelSelectableRow({
             disabled={disabled ?? !onPress}
             focusedClassName="rounded-lg bg-white/10"
             scaleTo={1.01}
+            hasTVPreferredFocus={hasTVPreferredFocus}
         >
             <View
                 className={cn(
@@ -396,21 +398,6 @@ function MainSettingsContent({
             accent: prefs.centerTapPlayPause ? BRAND_ACCENT : undefined,
             action: "toggle-center-tap",
         },
-        {
-            label: "Gesture Controls",
-            value: prefs.sideSwipeBrightnessVolume ? "On" : "Off",
-            panel: "main",
-            icon: <Sun size={15} color="rgba(255,255,255,0.6)" />,
-            accent: prefs.sideSwipeBrightnessVolume ? BRAND_ACCENT : undefined,
-            action: "toggle-side-swipe",
-        },
-        {
-            label: "Screen Lock",
-            value: "",
-            panel: "main",
-            icon: <Lock size={15} color="rgba(255,255,255,0.6)" />,
-            action: "lock",
-        },
     ]
 
     return (
@@ -422,6 +409,7 @@ function MainSettingsContent({
                 onToggleSideSwipeControls={onToggleSideSwipeControls}
                 onToggleAutoSkipOpEd={onToggleAutoSkipOpEd}
                 onLockScreen={onLockScreen}
+                preferredFocusIndex={0}
             />
         </View>
     )
@@ -497,7 +485,7 @@ function AudioSubtitlesContent({ state, prefs, onNavigate }: {
         <View className="gap-4">
             <View>
                 <SectionLabel>Audio</SectionLabel>
-                <SettingsCard rows={audioRows} onNavigate={onNavigate} />
+                <SettingsCard rows={audioRows} onNavigate={onNavigate} preferredFocusIndex={0} />
             </View>
             <View>
                 <SectionLabel>Subtitles</SectionLabel>
@@ -513,7 +501,7 @@ function SpeedContent({ current, onSelect }: { current: number; onSelect: (s: nu
             {SPEED_OPTIONS.map((s, idx) => {
                 const active = Math.abs(current - s) < 0.01
                 return (
-                    <PanelSelectableRow key={s} active={active} borderTop={idx > 0} onPress={() => onSelect(s)} className="justify-between">
+                    <PanelSelectableRow key={s} active={active} borderTop={idx > 0} onPress={() => onSelect(s)} className="justify-between" hasTVPreferredFocus={idx === 0}>
                         <View className="flex-row items-center gap-2">
                             <Text className={cn("text-sm text-white", active && "font-semibold text-player-text")}>
                                 {s}x
@@ -548,6 +536,7 @@ function SeekAmountContent({ current, onSelect, description }: {
                             borderTop={idx > 0}
                             onPress={() => onSelect(seconds)}
                             className="justify-between"
+                            hasTVPreferredFocus={idx === 0}
                         >
                             <View className="flex-row items-center gap-2">
                                 <Text className={cn("text-sm text-white", active && "font-semibold text-player-text")}>
@@ -582,7 +571,7 @@ function DelayContent({ label, current, step, onChange, onReset }: {
                 </Text>
             </View>
             <View className="flex-row items-center gap-3.5">
-                <StepperButton onPress={() => onChange(-step)} icon={<Minus size={18} color="#fff" />} />
+                <StepperButton onPress={() => onChange(-step)} icon={<Minus size={18} color="#fff" />} hasTVPreferredFocus />
                 <TvFocusablePressable onPress={onReset} focusedClassName="border-brand-400/60 bg-white/10" scaleTo={1.05}>
                     <View
                         className={cn(
@@ -610,7 +599,7 @@ function SubSizeContent({ current, onSelect }: { current: number; onSelect: (s: 
             {SUBTITLE_FONT_SIZE_OPTIONS.map((s, idx) => {
                 const active = current === s
                 return (
-                    <PanelSelectableRow key={s} active={active} borderTop={idx > 0} onPress={() => onSelect(s)} className="justify-between">
+                    <PanelSelectableRow key={s} active={active} borderTop={idx > 0} onPress={() => onSelect(s)} className="justify-between" hasTVPreferredFocus={idx === 0}>
                         <View className="flex-row items-center gap-2">
                             <Text className={cn("text-sm text-white", active && "font-semibold text-player-text")}>
                                 {s}
@@ -651,6 +640,7 @@ function TrackContent({
                 <PanelSelectableRow
                     active={isNoneSelected}
                     onPress={() => onSelect(-1)}
+                    hasTVPreferredFocus
                 >
                     <View className="mr-2 flex-1">
                         <Text className={cn("text-sm text-white", isNoneSelected && "font-semibold text-player-text")} numberOfLines={1}>
@@ -663,7 +653,7 @@ function TrackContent({
             {tracks.map((t, idx) => {
                 const borderTop = allowNone ? true : idx > 0
                 return (
-                    <PanelSelectableRow key={t.id} active={t.selected} borderTop={borderTop} onPress={() => onSelect(t.id)}>
+                    <PanelSelectableRow key={t.id} active={t.selected} borderTop={borderTop} onPress={() => onSelect(t.id)} hasTVPreferredFocus={!allowNone && idx === 0}>
                         <View className="mr-2 flex-1">
                             <Text className={cn("text-sm text-white", t.selected && "font-semibold text-player-text")} numberOfLines={1}>
                                 {t.title || t.language || `Track ${t.id}`}
@@ -825,27 +815,20 @@ function ExternalSubtitleSearchContent({
                             <TextInput
                                 value={apiKeyDraft}
                                 onChangeText={setApiKeyDraft}
+                                onSubmitEditing={() => {
+                                    onSaveWyzieApiKey(apiKeyDraft.trim())
+                                    setShowApiKeyInput(false)
+                                }}
                                 placeholder="Enter your Wyzie key"
                                 placeholderTextColor="rgba(255,255,255,0.2)"
                                 autoCapitalize="none"
                                 autoCorrect={false}
                                 secureTextEntry
                                 className={PANEL_INPUT_CLASS}
+                                {...({ hasTVPreferredFocus: true } as any)}
                             />
                         </FilterRow>
-                        <View className="flex-row items-center gap-2">
-                            <Button
-                                size="sm"
-                                variant="secondary"
-                                focusable={Platform.isTV}
-                                onPress={() => {
-                                    onSaveWyzieApiKey(apiKeyDraft.trim())
-                                    setShowApiKeyInput(false)
-                                }}
-                            >
-                                <Text className="text-foreground">Save Key</Text>
-                            </Button>
-                        </View>
+                        <Text className="px-0.5 text-xs text-white/25">Press Enter to save</Text>
                     </View>
                 ) : (
                     <Button
@@ -1034,6 +1017,11 @@ function LanguagePrefContent({ label, current, onSave }: {
     label: string; current: string; onSave: (v: string) => void
 }) {
     const [value, setValue] = React.useState(current)
+
+    const handleSubmit = React.useCallback(() => {
+        onSave(value)
+    }, [onSave, value])
+
     return (
         <View className="gap-4">
             <Text className="text-sm leading-5 text-white/50">
@@ -1044,18 +1032,15 @@ function LanguagePrefContent({ label, current, onSave }: {
                 <TextInput
                     value={value}
                     onChangeText={setValue}
+                    onSubmitEditing={handleSubmit}
                     placeholder="e.g. jpn, jp, ja, japanese"
                     placeholderTextColor="rgba(255,255,255,0.2)"
                     autoCapitalize="none"
                     autoCorrect={false}
                     className={PANEL_INPUT_CLASS}
+                    {...({ hasTVPreferredFocus: true } as any)}
                 />
             </View>
-            <TvFocusablePressable onPress={() => onSave(value)} focusedClassName="border-brand-400/60 bg-white/10" scaleTo={1.02}>
-                <View className="items-center rounded-xl border border-player-tint/25 bg-player-tint/15 py-3">
-                    <Text className="text-sm font-semibold text-player-text">Save</Text>
-                </View>
-            </TvFocusablePressable>
             <View className="rounded-lg border border-white/5 bg-white/[0.02] p-3">
                 <Text className="text-xs leading-4 text-white/30">
                     {"Examples:\n\u2022 Japanese audio: jpn, jp, ja, japanese\n\u2022 English subs: eng, en, english\n\u2022 Multi: jpn, eng, kor"}
@@ -1077,6 +1062,16 @@ function SubtitleLanguagePrefContent({
     const [prefVal, setPrefVal] = React.useState(preferred)
     const [ignoredVal, setIgnoredVal] = React.useState(ignored)
 
+    const prefInputRef = React.useRef<TextInput>(null)
+
+    React.useEffect(() => {
+        prefInputRef.current?.focus()
+    }, [])
+
+    const handleSubmit = React.useCallback(() => {
+        onSave(prefVal, ignoredVal)
+    }, [onSave, prefVal, ignoredVal])
+
     return (
         <View className="gap-4">
             <Text className="text-sm leading-5 text-white/50">
@@ -1085,8 +1080,10 @@ function SubtitleLanguagePrefContent({
             <View className="gap-1.5">
                 <SectionLabel>Preferred Subtitle Languages</SectionLabel>
                 <TextInput
+                    ref={prefInputRef}
                     value={prefVal}
                     onChangeText={setPrefVal}
+                    onSubmitEditing={handleSubmit}
                     placeholder="e.g. eng, en, english"
                     placeholderTextColor="rgba(255,255,255,0.2)"
                     autoCapitalize="none"
@@ -1099,6 +1096,7 @@ function SubtitleLanguagePrefContent({
                 <TextInput
                     value={ignoredVal}
                     onChangeText={setIgnoredVal}
+                    onSubmitEditing={handleSubmit}
                     placeholder="e.g. signs & songs, signs, songs"
                     placeholderTextColor="rgba(255,255,255,0.2)"
                     autoCapitalize="none"
@@ -1109,11 +1107,6 @@ function SubtitleLanguagePrefContent({
                     Avoid tracks containing these labels (comma-separated).
                 </Text>
             </View>
-            <TvFocusablePressable onPress={() => onSave(prefVal, ignoredVal)} focusedClassName="border-brand-400/60 bg-white/10" scaleTo={1.02}>
-                <View className="items-center rounded-xl border border-player-tint/25 bg-player-tint/15 py-3">
-                    <Text className="text-sm font-semibold text-player-text">Save</Text>
-                </View>
-            </TvFocusablePressable>
             <View className="rounded-lg border border-white/5 bg-white/[0.02] p-3">
                 <Text className="text-xs leading-4 text-white/30">
                     {"Examples:\n\u2022 Preferred: eng, en, english\n\u2022 Ignored: signs & songs, signs, songs, sign, song"}
@@ -1159,6 +1152,7 @@ function EpisodesListContent({
                         disabled={isCurrent}
                         focusedClassName="rounded-lg bg-white/10"
                         scaleTo={1.01}
+                        hasTVPreferredFocus={ep.episodeNumber === episodes[0].episodeNumber}
                     >
                         <View
                             className={cn(
@@ -1202,6 +1196,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 function SettingsCard({
     rows, onNavigate,
     onToggleAutoNext, onToggleCenterTapPlayPause, onToggleSideSwipeControls, onToggleAutoSkipOpEd, onLockScreen,
+    preferredFocusIndex,
 }: {
     rows: Array<{
         label: string; value: string; panel: PlayerPanel; icon: React.ReactNode
@@ -1212,6 +1207,14 @@ function SettingsCard({
     onToggleCenterTapPlayPause?: () => void; onToggleSideSwipeControls?: () => void
     onToggleAutoSkipOpEd?: () => void
     onLockScreen?: () => void
+    /**
+     * Index of the row that should claim TV preferred focus. When set,
+     * RN TV lands focus directly on that row when the panel mounts.
+     * Leave undefined to let the engine pick — important for panels
+     * that render two SettingsCards in series (e.g. audio + subtitles)
+     * where claiming focus on both would race.
+     */
+    preferredFocusIndex?: number
 }) {
     return (
         <View className={PANEL_CARD_CLASS}>
@@ -1219,6 +1222,7 @@ function SettingsCard({
                 <PanelSelectableRow
                     key={`${row.panel}-${row.label}`}
                     borderTop={idx > 0}
+                    hasTVPreferredFocus={preferredFocusIndex === idx}
                     onPress={() => {
                         if (row.action === "toggle-auto-next" && onToggleAutoNext) onToggleAutoNext()
                         else if (row.action === "toggle-center-tap" && onToggleCenterTapPlayPause) onToggleCenterTapPlayPause()
@@ -1244,9 +1248,9 @@ function SettingsCard({
     )
 }
 
-function StepperButton({ onPress, icon }: { onPress: () => void; icon: React.ReactNode }) {
+function StepperButton({ onPress, icon, hasTVPreferredFocus }: { onPress: () => void; icon: React.ReactNode; hasTVPreferredFocus?: boolean }) {
     return (
-        <TvFocusablePressable onPress={onPress} focusedClassName="border-brand-400/60 bg-white/10" scaleTo={1.1}>
+        <TvFocusablePressable onPress={onPress} focusedClassName="border-brand-400/60 bg-white/10" scaleTo={1.1} hasTVPreferredFocus={hasTVPreferredFocus}>
             <View className="size-12 items-center justify-center rounded-full border border-white/10 bg-white/5">
                 {icon}
             </View>

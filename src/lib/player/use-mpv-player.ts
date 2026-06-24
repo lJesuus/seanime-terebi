@@ -1,5 +1,5 @@
-import { playerErrorAtom, playerLoadingMessageAtom } from "@/lib/player"
-import type { MobilePlaybackSource, PlayerState } from "@/lib/player"
+import { playerErrorAtom, playerLoadingMessageAtom } from "./session"
+import type { MobilePlaybackSource, PlayerState } from "./types"
 import { logger } from "@/lib/utils/logger"
 import type {
     MpvPlayerViewRef,

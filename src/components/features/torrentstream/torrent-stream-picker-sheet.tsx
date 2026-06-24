@@ -67,10 +67,10 @@ type TorrentStreamPickerSheetProps = {
     torrentMetadataByInfoHash?: Record<string, Habari_Metadata | undefined>
     usePreviousBatch: boolean
     resolution: TorrentResolution
-    autoSelect: boolean
-    autoSelectFile: boolean
-    onToggleAutoSelect: () => void
-    onToggleAutoSelectFile: () => void
+    autoSelect?: boolean
+    autoSelectFile?: boolean
+    onToggleAutoSelect?: () => void
+    onToggleAutoSelectFile?: () => void
     mode?: "stream" | "download"
     onDownloadTorrent?: (torrent: HibikeTorrent_AnimeTorrent, smartSelect: boolean) => void
     onDownloadFile?: (torrent: HibikeTorrent_AnimeTorrent, fileId: string | null) => void
@@ -133,10 +133,10 @@ export function TorrentStreamPickerSheet(props: TorrentStreamPickerSheetProps) {
         torrentMetadataByInfoHash,
         usePreviousBatch,
         resolution,
-        autoSelect,
-        autoSelectFile,
-        onToggleAutoSelect,
-        onToggleAutoSelectFile,
+        autoSelect = false,
+        autoSelectFile = false,
+        onToggleAutoSelect = () => {},
+        onToggleAutoSelectFile = () => {},
         mode = "stream",
         onDownloadTorrent,
         onDownloadFile,
@@ -1252,7 +1252,7 @@ function TorrentCardPressable({ torrent, index, isSelected, episodes, torrentMet
 }) {
     const isTV = useIsTV()
     const [focused, setFocused] = React.useState(false)
-    const pressableRef = React.useRef<React.ComponentRef<typeof Pressable>>(null)
+    const pressableRef = React.useRef<React.ComponentRef<typeof TvFocusablePressable>>(null)
     const [selfTag, setSelfTag] = React.useState<number | null>(null)
     const tagResolved = React.useRef(false)
 
@@ -1282,7 +1282,7 @@ function TorrentCardPressable({ torrent, index, isSelected, episodes, torrentMet
     }, [torrent, isSelected, onSelectTorrent, onConfirmTorrentSelection, autoSelectFile, onSelectStage])
 
     return (
-        <Pressable
+        <TvFocusablePressable
             ref={pressableRef}
             onPress={handlePress}
             onFocus={() => setFocused(true)}
@@ -1300,7 +1300,7 @@ function TorrentCardPressable({ torrent, index, isSelected, episodes, torrentMet
                 isSelected={isSelected}
                 isFocused={focused}
             />
-        </Pressable>
+        </TvFocusablePressable>
     )
 }
 

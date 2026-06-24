@@ -1,6 +1,5 @@
 import { logger } from "@/lib/utils/logger"
 import * as React from "react"
-import { InteractionManager } from "react-native"
 
 const log = logger("screen-profiler")
 
@@ -23,12 +22,18 @@ export function useDevScreenProfiler(label: string, primaryContentReady: boolean
         mountTimeRef.current = start
         didLogReadyRef.current = false
 
-        const task = InteractionManager.runAfterInteractions(() => {
+        // Defer to the next frame instead of using the deprecated
+        // `InteractionManager.runAfterInteractions`. The semantics are
+        // close enough for a dev-only metric and the log now fires
+        // after the next paint commit (typically the same window as
+        // "interactions settled" on most devices).
+
+        const rafId = requestAnimationFrame(() => {
             log.info(`${label} interactions settled in ${Math.round(getNow() - start)}ms`)
         })
 
         return () => {
-            task.cancel()
+            cancelAnimationFrame(rafId)
         }
     }, [label])
 

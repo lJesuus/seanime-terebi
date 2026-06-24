@@ -12,8 +12,9 @@ import { toast } from "@/lib/utils/toast"
 import { LinearGradient } from "expo-linear-gradient"
 import { router } from "expo-router"
 import * as React from "react"
-import { Image, Platform, Text, View } from "react-native"
+import { Text, View } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
+import { Image } from "expo-image"
 
 export default function Screen() {
     const currentServerUrl = useServerUrl()
@@ -27,15 +28,6 @@ export default function Screen() {
 
     const urlInputRef = React.useRef<any>(null)
     const passwordInputRef = React.useRef<any>(null)
-
-    // Force initial focus on mount (Mobile only)
-    React.useEffect(() => {
-        if (Platform.isTV) return
-        const timer = setTimeout(() => {
-            urlInputRef.current?.focus()
-        }, 200)
-        return () => clearTimeout(timer)
-    }, [])
 
     const showErrorToast = React.useCallback((message: string) => {
         toast.error(message, {
@@ -124,7 +116,7 @@ export default function Screen() {
                             <Image
                                 className="w-24 h-24"
                                 source={IMAGES.logo2}
-                                resizeMode="contain"
+                                contentFit="contain"
                             />
                         </View>
                         <Text className="text-3xl font-bold text-white mb-3 tracking-tight">

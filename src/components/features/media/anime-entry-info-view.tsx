@@ -11,14 +11,14 @@ import { buildMediaEntryHref } from "@/lib/media-entry-route"
 import { cn } from "@/lib/utils"
 import { router } from "expo-router"
 import * as React from "react"
-import { Dimensions, FlatList, Platform, Text, View } from "react-native"
+import { Dimensions, FlatList, Text, View } from "react-native"
 
 const { width: SCREEN_WIDTH } = Dimensions.get("screen")
-const isTV = Platform.isTV
-const CARD_WIDTH = isTV ? SCREEN_WIDTH / 7 : (2 / 5) * SCREEN_WIDTH
-const CARD_ROW_HEIGHT = CARD_WIDTH * 1.5 + (isTV ? 32 : 16)
-const SPACING = isTV ? 20 : 10
-const CARD_PADDING_H = isTV ? 28 : 20
+// TV-only build: 7-up grid aligns with the rest of the TV carousel layout.
+const CARD_WIDTH = SCREEN_WIDTH / 7
+const CARD_ROW_HEIGHT = CARD_WIDTH * 1.5 + 32
+const SPACING = 20
+const CARD_PADDING_H = 28
 
 function formatRelationType(type: string) {
     return type.charAt(0).toUpperCase() + type.slice(1).toLowerCase().replace(/_/g, " ")

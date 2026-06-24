@@ -1,4 +1,3 @@
-import { useIsTV } from "@/hooks/use-device"
 import { Text } from "@/components/ui/text"
 import { cn } from "@/lib/utils"
 import * as React from "react"
@@ -11,7 +10,6 @@ type MultiToggleProps<T extends string> = {
 }
 
 export function MultiToggle<T extends string>({ options, values, onToggle }: MultiToggleProps<T>) {
-    const isTV = useIsTV()
     return (
         <View className="flex-row flex-wrap gap-2">
             {options.map(opt => {
@@ -20,7 +18,7 @@ export function MultiToggle<T extends string>({ options, values, onToggle }: Mul
                     <Pressable
                         key={opt.value}
                         onPress={() => onToggle(opt.value)}
-                        focusable={isTV}
+                        focusable
                         className={cn(
                             "h-9 px-4 rounded-xl border items-center justify-center active:opacity-70",
                             selected

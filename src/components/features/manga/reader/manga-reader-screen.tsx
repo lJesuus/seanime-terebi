@@ -38,14 +38,10 @@ import Ionicons from "@expo/vector-icons/Ionicons"
 import Slider from "@react-native-community/slider"
 import { FlashList, type FlashListRef, type ListRenderItemInfo, type ViewToken } from "@shopify/flash-list"
 import { Image } from "expo-image"
-import { LinearGradient } from "expo-linear-gradient"
 import { Stack, useRouter } from "expo-router"
-import * as ScreenOrientation from "expo-screen-orientation"
-import { Accelerometer } from "expo-sensors"
 import * as React from "react"
 import {
     ActivityIndicator,
-    AppState,
     type LayoutChangeEvent,
     type NativeScrollEvent,
     type NativeSyntheticEvent,
@@ -57,6 +53,7 @@ import {
     useWindowDimensions,
     View,
 } from "react-native"
+import { LinearGradient } from "expo-linear-gradient"
 import Animated, { FadeIn, FadeOut, useAnimatedStyle, useSharedValue, withSpring } from "react-native-reanimated"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 
@@ -146,7 +143,9 @@ export function MangaReaderScreen({ mediaId, provider, chapterId, chapterNumber 
     const pages = rawPages
     const spreads = React.useMemo(() => buildReaderSpreads(pages, settings), [pages, settings])
 
-    const [controlsVisible, setControlsVisible] = React.useState(!isTV)
+    // TV-only: controls start hidden. The user toggles them via a tap or
+    // DPAD_CENTER; on TV they auto-hide on a delay once visible.
+    const [controlsVisible, setControlsVisible] = React.useState(false)
     const [settingsOpen, setSettingsOpen] = React.useState(false)
     const [spreadState, setSpreadState] = React.useState<SpreadState>({ currentPageIndex: 0, currentSpreadIndex: 0 })
     const [flashText, setFlashText] = React.useState<string | null>(null)
@@ -251,58 +250,6 @@ export function MangaReaderScreen({ mediaId, provider, chapterId, chapterNumber 
         readingMode: settings.readingMode,
         savedPageIndex,
     })
-
-    React.useEffect(() => {
-        if (isTV) return
-
-        let accelerometerSubscription: { remove: () => void } | null = null
-        let appStateSubscription: { remove: () => void } | null = null
-
-        if (settings.readingMode === MANGA_READING_MODE.DOUBLE_PAGE) {
-            // mirror the player's landscape-lock pattern for double page
-            let currentLock = Platform.OS === "ios"
-                ? ScreenOrientation.OrientationLock.LANDSCAPE_LEFT
-                : ScreenOrientation.OrientationLock.LANDSCAPE
-
-            const lockLandscape = async (lockType: ScreenOrientation.OrientationLock) => {
-                try {
-                    await ScreenOrientation.lockAsync(lockType)
-                    currentLock = lockType
-                }
-                catch {
-                }
-            }
-
-            lockLandscape(currentLock)
-
-            if (Platform.OS === "ios") {
-                Accelerometer.setUpdateInterval(500)
-                accelerometerSubscription = Accelerometer.addListener(({ x }) => {
-                    if (x > 0.6 && currentLock !== ScreenOrientation.OrientationLock.LANDSCAPE_LEFT) {
-                        lockLandscape(ScreenOrientation.OrientationLock.LANDSCAPE_LEFT)
-                    } else if (x < -0.6 && currentLock !== ScreenOrientation.OrientationLock.LANDSCAPE_RIGHT) {
-                        lockLandscape(ScreenOrientation.OrientationLock.LANDSCAPE_RIGHT)
-                    }
-                })
-            }
-
-            appStateSubscription = Platform.OS === "ios"
-                ? AppState.addEventListener("change", nextState => {
-                    if (nextState === "active") {
-                        lockLandscape(currentLock)
-                    }
-                })
-                : null
-        } else {
-            ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP)
-        }
-
-        return () => {
-            accelerometerSubscription?.remove()
-            appStateSubscription?.remove()
-            ScreenOrientation.unlockAsync()
-        }
-    }, [settings.readingMode, isTV])
 
     React.useEffect(() => {
         setActiveZoomId(null)
@@ -764,8 +711,8 @@ export function MangaReaderScreen({ mediaId, provider, chapterId, chapterNumber 
                 />
             ) : (
                 <>
-                    {/* TV header: simple View en la parte superior, no overlay */}
-                    {isTV && controlsVisible && (
+                    {/* TV header: in-flow, not overlay */}
+                    {controlsVisible && (
                         <View style={{ paddingTop: insets.top + 10, paddingHorizontal: 16, backgroundColor: "rgba(8,8,8,0.95)" }}>
                             <View className="gap-2.5">
                                 <View className="flex-row items-center gap-3">
@@ -806,7 +753,7 @@ export function MangaReaderScreen({ mediaId, provider, chapterId, chapterNumber 
                     )}
 
                     {/* TV flashText */}
-                    {isTV && flashText && (
+                    {flashText && (
                         <View
                             pointerEvents="none"
                             style={{ position: "absolute", top: insets.top + 60, left: 0, right: 0, zIndex: 50 }}
@@ -843,8 +790,6 @@ export function MangaReaderScreen({ mediaId, provider, chapterId, chapterNumber 
                                     tapExclusionBottom={hudTapExclusionBottom}
                                     tapExclusionTop={hudTapExclusionTop}
                                     tapViewportHeight={screenHeight}
-                                    scrollEnabled={isTV ? false : undefined}
-                                    {...(isTV ? { onFocus: handleContentFocus } : {})}
                                 >
                                     <View className="gap-0">
                                         {spreads.map((item, index) => (
@@ -891,7 +836,7 @@ export function MangaReaderScreen({ mediaId, provider, chapterId, chapterNumber 
                                         longStripContentOffsetRef.current = event.nativeEvent.contentOffset.y
                                     }}
                                     renderItem={renderVirtualizedLongStripItem}
-                                    {...(isTV ? { onFocus: handleContentFocus } : {})}
+                                    onFocus={handleContentFocus}
                                 />
                             )
                         ) : (
@@ -929,91 +874,10 @@ export function MangaReaderScreen({ mediaId, provider, chapterId, chapterNumber 
                                         tapViewportHeight={screenHeight}
                                     />
                                 )}
-                                {...(isTV ? { onFocus: handleContentFocus } : {})}
+                                onFocus={handleContentFocus}
                             />
                         )}
                     </View>
-
-                    {/* Mobile overlay original */}
-                    {!isTV && (
-                        <Animated.View
-                            entering={FadeIn.duration(180)}
-                            exiting={FadeOut.duration(150)}
-                            pointerEvents="box-none"
-                            style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
-                        >
-                            {controlsVisible && (
-                                <>
-                                    <LinearGradient
-                                        pointerEvents="none"
-                                        colors={["rgba(8,8,8,0.92)", "rgba(8,8,8,0.5)", "transparent"]}
-                                        start={{ x: 0.5, y: 0 }}
-                                        end={{ x: 0.5, y: 1 }}
-                                        style={{ position: "absolute", top: 0, left: 0, right: 0, height: insets.top + 120 }}
-                                    />
-                                    <LinearGradient
-                                        pointerEvents="none"
-                                        colors={["transparent", "rgba(8,8,8,0.55)", "rgba(8,8,8,0.88)"]}
-                                        start={{ x: 0.5, y: 0 }}
-                                        end={{ x: 0.5, y: 1 }}
-                                        style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: insets.bottom + 120 }}
-                                    />
-                                </>
-                            )}
-
-                            <View style={{ paddingTop: insets.top + 10, paddingHorizontal: 16 }}>
-                                {controlsVisible && (
-                                    <View className="gap-2.5">
-                                        <View className="flex-row items-center gap-3">
-                                            <ReaderIconButton icon="chevron-back" onPress={() => router.back()} />
-                                            <View className="flex-1">
-                                                <Text className="text-sm font-semibold text-white" numberOfLines={1}>
-                                                    {chapterTitle}
-                                                </Text>
-                                                <Text className="mt-0.5 text-xs text-white/40" numberOfLines={1}>
-                                                    {mangaTitle}
-                                                </Text>
-                                            </View>
-                                            <View className="flex-row items-center gap-1.5">
-                                                <ReaderSmallButton
-                                                    icon="chevron-back"
-                                                    disabled={!previousChapter}
-                                                    onPress={() => previousChapter && navigateToChapter(previousChapter)}
-                                                />
-                                                <ReaderSmallButton
-                                                    icon="chevron-forward"
-                                                    disabled={!nextChapter}
-                                                    onPress={() => nextChapter && handleOpenNextChapter()}
-                                                />
-                                                <ReaderIconButton icon="settings-outline" onPress={handleOpenSettings} />
-                                            </View>
-                                        </View>
-
-                                        {settings.showProgressBar && pages.length > 0 && (
-                                            <View className="mx-1 h-0.5 overflow-hidden rounded-full bg-white/8">
-                                                <View
-                                                    className="h-full rounded-full bg-brand-300/60"
-                                                    style={{ width: `${readingProgress * 100}%` }}
-                                                />
-                                            </View>
-                                        )}
-                                    </View>
-                                )}
-
-                                {flashText && (
-                                    <Animated.View
-                                        entering={FadeIn.duration(120)}
-                                        exiting={FadeOut.duration(180)}
-                                        className="items-center"
-                                    >
-                                        <View className="mt-3 rounded-full border border-white/8 bg-black/60 px-4 py-1.5">
-                                            <Text className="text-xs font-medium text-white/70">{flashText}</Text>
-                                        </View>
-                                    </Animated.View>
-                                )}
-                            </View>
-                        </Animated.View>
-                    )}
 
                     {settings.brightness < 1 && (
                         <View
@@ -1497,34 +1361,20 @@ const ReaderIconButton = React.forwardRef<React.ComponentRef<typeof Pressable>, 
     nextFocusUp,
     hasTVPreferredFocus,
 }, ref) {
-    const isTV = useIsTV()
-    if (isTV) {
-        return (
-            <TvFocusablePressable
-                ref={ref}
-                onPress={onPress}
-                className="h-12 w-12 items-center justify-center rounded-full bg-white/5"
-                focusedClassName="bg-white/15 border border-brand-400/60"
-                nextFocusLeft={nextFocusLeft ?? undefined}
-                nextFocusRight={nextFocusRight ?? undefined}
-                nextFocusDown={nextFocusDown ?? undefined}
-                nextFocusUp={nextFocusUp ?? undefined}
-                hasTVPreferredFocus={hasTVPreferredFocus}
-            >
-                <Ionicons name={icon} size={19} color="rgba(255,255,255,0.82)" />
-            </TvFocusablePressable>
-        )
-    }
     return (
-        <Pressable
+        <TvFocusablePressable
             ref={ref}
             onPress={onPress}
             className="h-12 w-12 items-center justify-center rounded-full bg-white/5"
-            hitSlop={14}
-            pressRetentionOffset={14}
+            focusedClassName="bg-white/15 border border-brand-400/60"
+            nextFocusLeft={nextFocusLeft ?? undefined}
+            nextFocusRight={nextFocusRight ?? undefined}
+            nextFocusDown={nextFocusDown ?? undefined}
+            nextFocusUp={nextFocusUp ?? undefined}
+            hasTVPreferredFocus={hasTVPreferredFocus}
         >
             <Ionicons name={icon} size={19} color="rgba(255,255,255,0.82)" />
-        </Pressable>
+        </TvFocusablePressable>
     )
 })
 
@@ -1541,34 +1391,19 @@ function ReaderSmallButton({
     nextFocusLeft?: number | null
     nextFocusRight?: number | null
 }) {
-    const isTV = useIsTV()
-    if (isTV) {
-        return (
-            <TvFocusablePressable
-                onPress={disabled ? undefined : onPress}
-                className={cn(
-                    "h-9 w-9 items-center justify-center rounded-full bg-white/5",
-                    disabled && "opacity-30",
-                )}
-                focusedClassName="bg-white/15 border border-brand-400/60"
-                nextFocusLeft={nextFocusLeft ?? undefined}
-                nextFocusRight={nextFocusRight ?? undefined}
-            >
-                <Ionicons name={icon} size={16} color="rgba(255,255,255,0.75)" />
-            </TvFocusablePressable>
-        )
-    }
     return (
-        <Pressable
+        <TvFocusablePressable
             onPress={disabled ? undefined : onPress}
             className={cn(
                 "h-9 w-9 items-center justify-center rounded-full bg-white/5",
                 disabled && "opacity-30",
             )}
-            hitSlop={10}
+            focusedClassName="bg-white/15 border border-brand-400/60"
+            nextFocusLeft={nextFocusLeft ?? undefined}
+            nextFocusRight={nextFocusRight ?? undefined}
         >
             <Ionicons name={icon} size={16} color="rgba(255,255,255,0.75)" />
-        </Pressable>
+        </TvFocusablePressable>
     )
 }
 

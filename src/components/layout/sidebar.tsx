@@ -4,9 +4,11 @@ import { FocusableView, FocusableViewHandle } from "@/components/layout/focusabl
 import { TabBarIcon } from "@/components/navigation/tab-bar-icon"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { COLORS } from "@/constants/colors"
+import { IMAGES } from "@/constants/images"
 import { cn } from "@/lib/utils"
 import Ionicons from "@expo/vector-icons/Ionicons"
-import { __sidebar_focusedAtom, __sidebar_menuOpenAtom } from "@/atoms/sidebar.atoms"
+import { Image } from "expo-image"
+import { __sidebar_focusedAtom } from "@/atoms/sidebar.atoms"
 import { BottomTabNavigationOptions } from "@react-navigation/bottom-tabs"
 import { useAtom } from "jotai"
 import * as React from "react"
@@ -23,6 +25,22 @@ export type AppTabConfig = {
     options?: BottomTabNavigationOptions
 }
 
+/**
+ * Sidebar — always visible left panel.
+ *
+ * Focus-driven expansion:
+ *   - collapsed (80px, icons-only) when no button has focus
+ *   - expanded  (240px, icons+labels) when any button has focus
+ *
+ * Focus enters the sidebar naturally via DPAD:
+ *   - LEFT  from content → current tab button (nextFocusLeft on TabFadeView)
+ *   - UP    from content → current tab button (nextFocusUp   on TabFadeView)
+ *   - RIGHT from sidebar → content page        (nextFocusRight on each button)
+ *   - LEFT  from sidebar → stays in sidebar    (no nextFocusLeft on buttons)
+ *
+ * OK on a tab navigates to that tab in the background (sidebar stays open).
+ * The user "enters" the page with RIGHT (focus moves to content).
+ */
 export function SidebarShell({
     tabs,
     user,
@@ -31,18 +49,22 @@ export function SidebarShell({
     user: Status["user"] | undefined
 }) {
     const segments = useSegments()
-    const currentTabName = segments?.[1]
+    const currentTabName = segments?.find(s => tabs.some(t => t.name === s))
     const currentIndex = Math.max(0, tabs.findIndex(t => t.name === currentTabName))
 
     const [focusedIndex, setFocusedIndex] = React.useState<number | null>(null)
     const isExpanded = focusedIndex !== null
 
-    const [menuOpen, setMenuOpen] = useAtom(__sidebar_menuOpenAtom)
     const [, setSidebarFocused] = useAtom(__sidebar_focusedAtom)
-    const isProgrammaticRef = React.useRef(false)
-    const prevMenuOpenRef = React.useRef(menuOpen)
 
-    const { setSidebarTag, contentWrapperTag } = React.useContext(TVFocusContext)
+    // `contentWrapperTag` removed from the destructure on purpose: the
+    // project's `FocusableView` exposes a native tag for `nextFocus*`
+    // chains, but the underlying Animated.View is not itself a TV focus
+    // target. `nextFocusRight` pointing at it used to trap DPAD RIGHT
+    // from a sidebar button onto a dead node. RN TV's spatial engine
+    // handles RIGHT navigation correctly on its own, so we do not wire
+    // an explicit chain anymore.
+    const { setSidebarTag, setCurrentTabButtonTag } = React.useContext(TVFocusContext)
     const sidebarZoneRef = React.useRef<FocusableViewHandle>(null)
 
     React.useLayoutEffect(() => {
@@ -51,54 +73,35 @@ export function SidebarShell({
         }
     }, [setSidebarTag])
 
+    const sidebarWidth = useSharedValue(80)
+    const labelOpacity = useSharedValue(0)
+
     const pressableRefs = React.useRef<(React.RefObject<React.ElementRef<typeof Pressable>> | null)[]>([])
 
-    React.useEffect(() => {
-        const wasOpen = prevMenuOpenRef.current
-        prevMenuOpenRef.current = menuOpen
-
-        if (menuOpen) {
-            isProgrammaticRef.current = true
-            if (focusedIndex === null) {
-                setFocusedIndex(currentIndex)
-            }
-        } else if (wasOpen) {
-            isProgrammaticRef.current = false
-            setFocusedIndex(null)
-        }
-    }, [menuOpen, currentIndex])
-
+    // Publish current tab button's native tag so TabFadeView can set
+    // nextFocusLeft / nextFocusUp on the content wrapper.
     React.useLayoutEffect(() => {
-        if (menuOpen && focusedIndex !== null) {
-            pressableRefs.current[focusedIndex]?.current?.focus()
+        const count = tabs.length + 1
+        if (pressableRefs.current.length < count) return
+        const idx = Math.max(0, currentIndex)
+        const ref = pressableRefs.current[idx]
+        if (ref?.current) {
+            setCurrentTabButtonTag(findNodeHandle(ref.current) as number)
         }
-    }, [menuOpen, focusedIndex])
+    }, [currentIndex, setCurrentTabButtonTag, tabs.length])
 
-    React.useEffect(() => {
-        if (focusedIndex === null && isProgrammaticRef.current) {
-            const timer = setTimeout(() => {
-                if (isProgrammaticRef.current) {
-                    isProgrammaticRef.current = false
-                    setMenuOpen(false)
-                }
-            }, 100)
-            return () => clearTimeout(timer)
-        }
-    }, [focusedIndex, setMenuOpen])
-
-    // Publish the synchronous focus state to the rest of the app. This runs
-    // independently of the 100ms grace window used by `__sidebar_menuOpenAtom`,
-    // so consumers (e.g. the hero carousel) get crisp "is sidebar focused"
-    // updates without the visual lag.
+    // Publish focus state for consumers (e.g. hero carousel).
     React.useEffect(() => {
         setSidebarFocused(focusedIndex !== null)
     }, [focusedIndex, setSidebarFocused])
 
-    const sidebarWidth = useSharedValue(80)
-    const labelOpacity = useSharedValue(0)
-
+    // Width & label animation — expand on focus, collapse on blur.
     React.useEffect(() => {
-        sidebarWidth.value = withTiming(isExpanded ? 240 : 80, { duration: 220 })
+        if (isExpanded) {
+            sidebarWidth.value = 240
+        } else {
+            sidebarWidth.value = withTiming(80, { duration: 220 })
+        }
         labelOpacity.value = withTiming(isExpanded ? 1 : 0, { duration: 180 })
     }, [isExpanded])
 
@@ -109,6 +112,11 @@ export function SidebarShell({
     const animatedLabelStyle = useAnimatedStyle(() => ({
         opacity: labelOpacity.value,
         transform: [{ translateX: interpolate(labelOpacity.value, [0, 1], [-10, 0]) }],
+    }))
+
+    const animatedLabelWidthStyle = useAnimatedStyle(() => ({
+        width: labelOpacity.value * 110,
+        overflow: "hidden",
     }))
 
     const itemCount = tabs.length + 1
@@ -139,92 +147,84 @@ export function SidebarShell({
     }, [tabs.length])
 
     return (
-        <>
-            {menuOpen && (
-                <View
-                    style={styles.menuBackdrop}
-                    pointerEvents="none"
-                />
-            )}
-
-            <FocusableView
-                ref={sidebarZoneRef}
-                style={[styles.sidebar, animatedSidebarStyle]}
-            >
-                <View className="h-20 justify-center px-4 mt-6">
-                    <View className="flex-row items-center gap-3">
-                        <View className="w-8 h-8 rounded-xl bg-brand-500 items-center justify-center">
-                            <Ionicons name="play-sharp" size={16} color="white" />
-                        </View>
-                        <Animated.Text
-                            style={[animatedLabelStyle]}
-                            className="text-lg font-bold text-white shrink"
-                            numberOfLines={1}
-                        >
-                            SEANIME
-                        </Animated.Text>
+        <FocusableView
+            ref={sidebarZoneRef}
+            style={[styles.sidebar, animatedSidebarStyle]}
+        >
+            <View className="h-20 justify-center mt-6">
+                <View className="flex-row items-center justify-center">
+                    <View className="w-8 h-8 items-center justify-center">
+                        <Image
+                            source={IMAGES.logo2}
+                            style={{ width: 28, height: 28 }}
+                            contentFit="contain"
+                        />
                     </View>
+                    <Animated.View style={[animatedLabelWidthStyle, animatedLabelStyle]}>
+                        <Text className="ml-3 text-lg font-bold text-white" numberOfLines={1}>
+                            SEANIME
+                        </Text>
+                    </Animated.View>
                 </View>
+            </View>
 
-                <View className="flex-1 justify-center px-3 gap-2">
-                    {tabs.filter(t => t.show).map((tab, index) => {
-                        const isActive = tab.name === currentTabName
-                        const isBtnFocused = focusedIndex === index
+            <View className="flex-1 justify-center px-3 gap-2">
+                {tabs.filter(t => t.show).map((tab, index) => {
+                    const isActive = tab.name === currentTabName
+                    const isBtnFocused = focusedIndex === index
 
-                        const onPress = () => {
-                            router.navigate(`/(tabs)/${tab.name}` as any)
-                        }
+                    const onPress = () => {
+                        router.navigate(`/(tabs)/${tab.name}` as any)
+                    }
 
-                        const nextFocusDown = focusChain ? focusChain.down[index] : undefined
-                        const nextFocusUp = focusChain ? focusChain.up[index] : undefined
-                        const nextFocusRight = contentWrapperTag ?? undefined
+                    const nextFocusDown = focusChain ? focusChain.down[index] : undefined
+                    const nextFocusUp = focusChain ? focusChain.up[index] : undefined
 
-                        return (
-                            <SidebarButton
-                                key={tab.name}
-                                focused={isActive}
-                                btnFocused={isBtnFocused}
-                                onPress={onPress}
-                                onFocus={() => setFocusedIndex(index)}
-                                onBlur={() => setFocusedIndex(curr => curr === index ? null : curr)}
-                                tab={tab}
-                                animatedLabelStyle={animatedLabelStyle}
-                                viewer={user}
-                                pressableRef={pressableRefs.current[index]!}
-                                nextFocusDown={nextFocusDown}
-                                nextFocusUp={nextFocusUp}
-                                nextFocusRight={nextFocusRight}
-                            />
-                        )
-                    })}
+                    return (
+                        <SidebarButton
+                            key={tab.name}
+                            focused={isActive}
+                            btnFocused={isBtnFocused}
+                            onPress={onPress}
+                            onFocus={() => setFocusedIndex(index)}
+                            onBlur={() => setFocusedIndex(curr => curr === index ? null : curr)}
+                            tab={tab}
+                            animatedLabelStyle={animatedLabelStyle}
+                            viewer={user}
+                            pressableRef={pressableRefs.current[index]!}
+                            nextFocusDown={nextFocusDown}
+                            nextFocusUp={nextFocusUp}
+                        />
+                    )
+                })}
 
-                    <SidebarButton
-                        focused={false}
-                        btnFocused={focusedIndex === tabs.length}
-                        onPress={() => router.push("/(app)/(tabs)/discover/search")}
-                        onFocus={() => setFocusedIndex(tabs.length)}
-                        onBlur={() => setFocusedIndex(curr => curr === tabs.length ? null : curr)}
-                        tab={{ show: true, name: "search", displayName: "Search", icon: "search-outline" }}
-                        animatedLabelStyle={animatedLabelStyle}
-                        viewer={user}
-                        pressableRef={pressableRefs.current[tabs.length]!}
-                        nextFocusDown={focusChain ? focusChain.down[tabs.length] : undefined}
+                <SidebarButton
+                    key={"search"}
+                    focused={false}
+                    btnFocused={focusedIndex === tabs.length}
+                    onPress={() => {
+                        router.push("/(app)/(tabs)/discover/search")
+                    }}
+                    onFocus={() => setFocusedIndex(tabs.length)}
+                    onBlur={() => setFocusedIndex(curr => curr === tabs.length ? null : curr)}
+                    tab={{ show: true, name: "search", displayName: "Search", icon: "search-outline" }}
+                    animatedLabelStyle={animatedLabelStyle}
+                    viewer={user}
+                    pressableRef={pressableRefs.current[tabs.length]!}                        nextFocusDown={focusChain ? focusChain.down[tabs.length] : undefined}
                         nextFocusUp={focusChain ? focusChain.up[tabs.length] : undefined}
-                        nextFocusRight={contentWrapperTag ?? undefined}
                     />
-                </View>
+            </View>
 
-                <View className="h-24 justify-center px-6 mb-6">
-                    <Animated.Text
-                        style={animatedLabelStyle}
-                        className="text-xs text-muted-foreground/60 shrink font-medium"
-                        numberOfLines={1}
-                    >
-                        Terebi Edition
-                    </Animated.Text>
-                </View>
-            </FocusableView>
-        </>
+            <View className="h-24 justify-center px-6 mb-6">
+                <Animated.Text
+                    style={animatedLabelStyle}
+                    className="text-xs text-muted-foreground/60 shrink font-medium"
+                    numberOfLines={1}
+                >
+                    Terebi Edition
+                </Animated.Text>
+            </View>
+        </FocusableView>
     )
 }
 
@@ -240,7 +240,6 @@ function SidebarButton({
     pressableRef,
     nextFocusDown,
     nextFocusUp,
-    nextFocusRight,
     nextFocusLeft,
 }: {
     focused: boolean
@@ -254,7 +253,6 @@ function SidebarButton({
     pressableRef: React.RefObject<React.ElementRef<typeof Pressable>>
     nextFocusDown?: number | null
     nextFocusUp?: number | null
-    nextFocusRight?: number | null
     nextFocusLeft?: number | null
 }) {
     return (
@@ -268,7 +266,6 @@ function SidebarButton({
             onBlur={onBlur}
             {...(nextFocusDown ? { nextFocusDown } as any : {})}
             {...(nextFocusUp ? { nextFocusUp } as any : {})}
-            {...(nextFocusRight ? { nextFocusRight } as any : {})}
             {...(nextFocusLeft ? { nextFocusLeft } as any : {})}
             className={cn(
                 "flex-row items-center h-14 rounded-2xl gap-4 px-3.5 w-full border border-transparent",
@@ -317,14 +314,5 @@ const styles = StyleSheet.create({
         borderRightColor: "rgba(255,255,255,0.08)",
         display: "flex",
         flexDirection: "column",
-    },
-    menuBackdrop: {
-        position: "absolute",
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        zIndex: 99,
-        backgroundColor: "rgba(0,0,0,0.5)",
     },
 })

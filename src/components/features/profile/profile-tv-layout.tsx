@@ -1,5 +1,4 @@
 import { TvFocusablePressable } from "@/components/ui/tv-focusable"
-import { useIsTV } from "@/hooks/use-device"
 import { cn } from "@/lib/utils"
 import { getPlatformExternalPlayers } from "@/lib/player/external-players"
 import { getPlayerPreferences, setPlayerPreferences } from "@/lib/player/player-preferences"
@@ -319,8 +318,6 @@ export function ProfileTVLayout({
     connectionLabel: string
     connectionColor: string
 }) {
-    const isTV = useIsTV()
-
     const visibleSections = React.useMemo(
         () => sections.filter(s => s.show !== false),
         [sections]
@@ -390,8 +387,6 @@ export function ProfileTVLayout({
             }
         }
     }, [visibleSections])
-
-    if (!isTV) return null
 
     return (
         <View className="flex-1 flex-row">

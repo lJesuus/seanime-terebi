@@ -1,4 +1,5 @@
 import React from "react"
+import { Platform } from "react-native"
 import { useAnimatedStyle, useSharedValue, withSequence, withTiming } from "react-native-reanimated"
 import { DOUBLE_TAP_INDICATOR_VISIBLE_MS } from "../constants"
 
@@ -6,6 +7,26 @@ import { DOUBLE_TAP_INDICATOR_VISIBLE_MS } from "../constants"
  * Manages the double-tap seek flash indicator state and animation.
  */
 export function useDoubleTapSeek() {
+    // TV has no touch input, so double-tap-to-seek is dead code. The
+    // wrapper here still returns the same shape the orchestrator
+    // expects, but no SharedValue / animated style / setTimeout is
+    // ever created on TV — a small boot-time + memory win and one less
+    // source of [Worklets] warnings under playback.
+    if (Platform.isTV) {
+        const noop = (..._args: unknown[]): void => {}
+        return {
+            doubleTapSide: "right" as const,
+            doubleTapAmount: 0,
+            // `any` matches both the underlying `AnimatedStyle<ViewStyle>`
+            // and the union TS infers from the non-TV branch's
+            // `useAnimatedStyle(...)` return. The renderer guard added
+            // in the orchestrator (`doubleTap.doubleTapAmount > 0`)
+            // means this field is never actually read on TV.
+            doubleTapIndicatorStyle: undefined as any,
+            showDoubleTapIndicator: noop,
+        }
+    }
+
     const [doubleTapSide, setDoubleTapSide] = React.useState<"left" | "right">("right")
     const [doubleTapAmount, setDoubleTapAmount] = React.useState(0)
     const doubleTapAmountRef = React.useRef(0)

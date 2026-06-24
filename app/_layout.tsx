@@ -2,13 +2,14 @@ import "../global.css"
 import { ServerUrlWrapper } from "@/api/components/server-data-wrapper"
 import { WebsocketProvider } from "@/api/components/websocket-provider"
 import { getStoredTheme } from "@/atoms/storage"
-import { setAndroidNavigationBar } from "@/lib/android-navigation-bar"
 import { AppReleaseUpdatePrompt } from "@/lib/app-release-updates"
 import { useConnectionStateMonitor } from "@/lib/connection-state"
 import { NAV_THEME } from "@/lib/constants"
 import { OtaUpdatePrompt } from "@/lib/ota/updates"
 import { hydrateQueryClient, OFFLINE_QUERY_KEYS, setupQueryPersistence } from "@/lib/query-persistence"
 import { useColorScheme } from "@/lib/useColorScheme"
+import { useServerUrl, useServerAuthToken } from "@/atoms/server.atoms"
+import { API_ENDPOINTS } from "@/api/generated/endpoints"
 import { Ionicons } from "@expo/vector-icons"
 import { DefaultTheme, Theme, ThemeProvider } from "@react-navigation/native"
 import { PortalHost } from "@rn-primitives/portal"
@@ -95,16 +96,82 @@ export default function RootLayout() {
 
     useConnectionStateMonitor()
 
+    const serverUrl = useServerUrl()
+    const serverAuthToken = useServerAuthToken()
+    const previousServerIdentityRef = React.useRef<string | null>(null)
+    const hasSeenRealIdentityRef = React.useRef(false)
+
     React.useEffect(() => {
         (async () => {
             const storedTheme = getStoredTheme() ?? "dark"
             setColorScheme(storedTheme)
-            setAndroidNavigationBar(storedTheme)
             setIsColorSchemeLoaded(true)
         })().finally(() => {
             SplashScreen.hideAsync()
         })
     }, [])
+
+    // Clear cross-server poisoned caches for queries whose queryKey
+    // does not include serverUrl / authToken. The discover list
+    // endpoints (AnilistListAnime, AnilistListManga,
+    // AnilistListMissedSequels) are keyed by queryKey shape only,
+    // so without this wipe a user who switches Seanime servers
+    // would see the previous server's trending / seasonal / missed
+    // lists until each hook's staleTime expires.
+    //
+    // Lifecycle (three phases, see effect body):
+    //   * Phase 1 (skip): EITHER atom is null. Covers jotai's
+    //     pre-hydration state at cold start as well as any
+    //     asymmetric hydration arc where either atom resolves a
+    //     tick before the other. We skip BEFORE constructing any
+    //     identity here, so partial states during hydration never
+    //     trigger the wipe that would otherwise clobber the MMKV
+    //     cache that hydrateQueryClient rehydrated at module init.
+    //   * Phase 2 (record): First effect run where BOTH atoms are
+    //     non-null. Record the identity, flip hasSeenRealIdentityRef,
+    //     and return without wiping. Sets the baseline identity used
+    //     by Phase 3 to detect user-intended changes.
+    //   * Phase 3 (wipe): Any subsequent run where BOTH atoms are
+    //     non-null AND the (url, token) tuple differs from the
+    //     recorded one \u2014 i.e. a server switch or a token refresh.
+    //     Wipe the three discover queryKey prefixes; identical
+    //     re-renders don't churn the cache.
+    React.useEffect(() => {
+        // Skip whenever EITHER atom is null. Three legitimate causes:
+        //   * Cold start, jotai hasn't hydrated from MMKV yet (both null).
+        //   * Asymmetric hydration arc: one atom resolves a tick before
+        //     the other (e.g. token first, URL a tick later). Treating
+        //     partial identities as "still hydrating" prevents the
+        //     later-arriving atom from triggering a wipe that nukes
+        //     the MMKV cache that `hydrateQueryClient` rehydrated at
+        //     module init.
+        //   * Logout transition, where jotai writes null to one or both
+        //     atoms. Skipping here means we don't wipe on logout; the
+        //     wipe fires on the next non-null identity.
+        if (serverUrl == null || serverAuthToken == null) return
+
+        const currentIdentity = `${serverUrl}|${serverAuthToken}`
+
+        // First real hydration after app launch: just record the
+        // identity. We must NOT wipe here, because `hydrateQueryClient`
+        // already rehydrated the MMKV cache at module init and we
+        // would clobber it, defeating the `staleTime: 5min` + MMKV +
+        // Library prefetch chain.
+        if (!hasSeenRealIdentityRef.current) {
+            hasSeenRealIdentityRef.current = true
+            previousServerIdentityRef.current = currentIdentity
+            return
+        }
+
+        const previousIdentity = previousServerIdentityRef.current
+        if (previousIdentity === currentIdentity) return
+
+        queryClient.removeQueries({ queryKey: [API_ENDPOINTS.ANILIST.AnilistListAnime.key] })
+        queryClient.removeQueries({ queryKey: [API_ENDPOINTS.MANGA.AnilistListManga.key] })
+        queryClient.removeQueries({ queryKey: [API_ENDPOINTS.ANILIST.AnilistListMissedSequels.key] })
+
+        previousServerIdentityRef.current = currentIdentity
+    }, [serverUrl, serverAuthToken])
 
     if (!isColorSchemeLoaded) {
         return null

@@ -12,6 +12,28 @@ import type { SideAdjustKind } from "../types"
 const ANDROID_BRIGHTNESS_WRITE_INTERVAL_MS = 80
 
 export function useSideAdjust() {
+    // TV has no touch — the brightness/volume side-swipe gestures are
+    // dead code on TV. Skipping the reanimated SharedValue bookkeeping AND
+    // the NavigationBar useEffect also eliminates the
+    // `setBehaviorAsync is not supported with edge-to-edge enabled`
+    // warning that fires under local-file playback on Android TV.
+    if (Platform.isTV) {
+        const noop = (): void => {}
+        return {
+            brightnessLevelRef: { current: 0.5 },
+            volumeLevelRef: { current: 0.5 },
+            sideAdjustKindRef: { current: null },
+            sideAdjustStartYRef: { current: 0 },
+            sideAdjustStartValueRef: { current: 0.5 },
+            sideAdjustActivatedRef: { current: false },
+            sideAdjustFeedbackKind: null,
+            sideAdjustFillStyle: undefined as any,
+            sideAdjustProgress: undefined as any,
+            scheduleSideAdjustHide: noop,
+            scheduleSideAdjustUpdate: noop,
+        }
+    }
+
     const brightnessLevelRef = React.useRef(0.5)
     const didSyncBrightnessRef = React.useRef(false)
     const initialBrightnessRef = React.useRef(0.5)

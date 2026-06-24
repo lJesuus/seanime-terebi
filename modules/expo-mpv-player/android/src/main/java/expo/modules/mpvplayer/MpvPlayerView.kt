@@ -122,10 +122,13 @@ class MpvPlayerView(context: Context, appContext: AppContext) : ExpoView(context
     }
 
     override fun onSurfaceTextureDestroyed(surfaceTexture: SurfaceTexture): Boolean {
-        this.surfaceTexture = null
-        surfaceReady = false
-        renderer?.detachSurface()
-        return false
+        // Return true to prevent Android from releasing the SurfaceTexture.
+        // If we return false, the BufferQueue is invalidated immediately —
+        // mpv loses its rendering surface and any subsequent video-reconfig
+        // (e.g. when the hardware decoder outputs the first full-resolution
+        // frame) crashes with "Missing surface pointer". Keeping the
+        // SurfaceTexture alive prevents the "pin disconnect" race.
+        return true
     }
 
     override fun onSurfaceTextureUpdated(surfaceTexture: SurfaceTexture) {}
