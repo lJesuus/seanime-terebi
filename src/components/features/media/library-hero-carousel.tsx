@@ -1,4 +1,6 @@
 import { Manga_Entry } from "@/api/generated/types"
+import { __libraryShelvesFocusedAtom } from "@/atoms/library.atoms"
+import { __sidebar_focusedAtom } from "@/atoms/sidebar.atoms"
 import { SeaImage } from "@/components/shared/sea-image"
 import { COLORS } from "@/constants/colors"
 import { ContinueWatchingItem } from "@/hooks/use-anime-library-collection"
@@ -8,6 +10,7 @@ import { cn } from "@/lib/utils"
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { LinearGradient } from "expo-linear-gradient"
 import { router } from "expo-router"
+import { useAtomValue } from "jotai"
 import * as React from "react"
 import { InteractionManager, Platform, Pressable, ScrollView, Text, useWindowDimensions, View } from "react-native"
 import Animated, {
@@ -25,6 +28,14 @@ import Animated, {
 
 const AUTO_ROTATE_INTERVAL = 20000
 const MAX_ITEMS = 12
+
+/**
+ * The slide at this zero-indexed position renders its action button without
+ * the "active" highlight so it stays visually calm (interpreted as the 5th
+ * hero card in user-facing count). The carousel still scrolls to and focuses
+ * its button, only its styling is suppressed.
+ */
+const INACTIVE_SLIDE_INDEX = 4
 const HERO_BACKGROUND = COLORS.background
 const HERO_BACKDROP = COLORS.mediaHeaderBackdrop
 const HERO_GRADIENT_TRANSPARENT = "rgba(17,17,17,0)"
@@ -78,6 +89,15 @@ export function LibraryHeroCarousel({
     const { sidebarTag } = React.useContext(TVFocusContext)
 
     const isTV = Platform.isTV
+    // Synchronous "is sidebar focused" signal — true iff any sidebar button
+    // currently has TV focus. Updated by `SidebarShell` directly so it does
+    // not lag behind the 100ms grace window used by the visual expansion atom.
+    const isSidebarFocused = useAtomValue(__sidebar_focusedAtom)
+    // True iff any focusable element in the library shelves (Continue
+    // Watching, Downloads, horizontal shelves) currently has TV focus.
+    // Suppresses the carousel pseudo-active highlight when the user has
+    // navigated onto a media card below the carousel.
+    const isLibraryShelvesFocused = useAtomValue(__libraryShelvesFocusedAtom)
     const heroHeight = isTV ? Math.round(screenHeight * 0.60) : (screenHeight < 750 ? 260 : 310)
     const titleFontSize = isTV ? 40 : (screenHeight < 750 ? 22 : 26)
 
@@ -149,7 +169,13 @@ export function LibraryHeroCarousel({
     }, [itemsKey, items.length, scrollToIndex, scrollX])
 
     React.useEffect(() => {
-        if (!isFocused || items.length <= 1) return
+        // Pause auto-rotation whenever focus leaves the carousel's
+        // visual area. Without this, a 20 s tick while the user is on
+        // the sidebar still advances `currentIndex`, which migrates
+        // `hasTVPreferredFocus` to a new slide and re-triggers RN TV's
+        // preferred-focus re-evaluation — yanking focus from the sidebar
+        // back into the carousel.
+        if (!isFocused || isSidebarFocused || isLibraryShelvesFocused || items.length <= 1) return
 
         const interval = setInterval(() => {
             if (isInteracting.current) return
@@ -157,7 +183,7 @@ export function LibraryHeroCarousel({
         }, AUTO_ROTATE_INTERVAL)
 
         return () => clearInterval(interval)
-    }, [currentIndex, isFocused, items.length, scrollToIndex])
+    }, [currentIndex, isFocused, isSidebarFocused, isLibraryShelvesFocused, items.length, scrollToIndex])
 
     React.useEffect(() => {
         if (!isFocused) {
@@ -225,10 +251,6 @@ export function LibraryHeroCarousel({
         [type, onWatchPress],
     )
 
-    const [hasCarouselFocus, setHasCarouselFocus] = React.useState(false)
-    const handleCarouselFocus = React.useCallback(() => setHasCarouselFocus(true), [])
-    const handleCarouselBlur = React.useCallback(() => setHasCarouselFocus(false), [])
-
     const handleSlideFocus = React.useCallback((index: number) => {
         setCurrentIndex(index)
         setTimeout(() => {
@@ -255,7 +277,18 @@ export function LibraryHeroCarousel({
                 pagingEnabled
                 nestedScrollEnabled
                 directionalLockEnabled
-                scrollEnabled={items.length > 1}
+                // Disable native scroll on TV. When `scrollEnabled` is true,
+                // the OS-level focus engine on Apple TV / Android TV
+                // intercepts DPAD LEFT / RIGHT to pan the viewport —
+                // swallowing the events before React Native can evaluate
+                // the focusable's `nextFocusLeft` chain, so DPAD LEFT from
+                // the action button never reaches the sidebar. It also
+                // re-evaluates preferred focus when the ScrollView scrolls
+                // (auto-rotate, jump-to-index, momentum), yanking focus
+                // away from the sidebar mid-flight. On TV we drive slide
+                // changes via focus jumps + the existing `scrollTo`
+                // refs, so a passive ScrollView is sufficient.
+                scrollEnabled={!isTV && items.length > 1}
                 showsHorizontalScrollIndicator={false}
                 scrollEventThrottle={16}
                 focusable={false}
@@ -279,9 +312,9 @@ export function LibraryHeroCarousel({
                         currentIndex={currentIndex}
                         sidebarTag={sidebarTag}
                         onSlideFocus={handleSlideFocus}
-                        onCarouselFocus={handleCarouselFocus}
-                        onCarouselBlur={handleCarouselBlur}
-                        hasCarouselFocus={hasCarouselFocus}
+                        isTabFocused={isFocused}
+                        isSidebarFocused={isSidebarFocused}
+                        isLibraryShelvesFocused={isLibraryShelvesFocused}
                     />
                 ))}
             </Animated.ScrollView>
@@ -332,9 +365,9 @@ function LibraryHeroSlide({
     currentIndex,
     sidebarTag,
     onSlideFocus,
-    onCarouselFocus,
-    onCarouselBlur,
-    hasCarouselFocus,
+    isTabFocused,
+    isSidebarFocused,
+    isLibraryShelvesFocused,
 }: {
     item: UnifiedHeroItem
     index: number
@@ -347,14 +380,42 @@ function LibraryHeroSlide({
     currentIndex: number
     sidebarTag: number | null
     onSlideFocus?: (index: number) => void
-    onCarouselFocus: () => void
-    onCarouselBlur: () => void
-    hasCarouselFocus: boolean
+    /**
+     * True when the library tab currently holds TV focus. Mirrored from
+     * the parent carousel's `isFocused` prop so each slide can keep the
+     * "active" highlight while the user is on the tab even when native
+     * focus has not yet landed on the current slide's button (e.g.
+     * between DPAD presses, during auto-rotation, after a swipe).
+     */
+    isTabFocused: boolean
+    isSidebarFocused: boolean
+    isLibraryShelvesFocused: boolean
 }) {
     const isTV = Platform.isTV
 
     const [btnFocused, setBtnFocused] = React.useState(false)
-    const showActiveStyle = isTV && (btnFocused || (index === currentIndex && hasCarouselFocus))
+    // Active style = "highlighted" (white bg + brand border) treatment.
+    // The pill stays pressable in all cases — only the visual styling
+    // changes.
+    //
+    // Highlights when:
+    //   * the slide's own button has direct focus (`btnFocused`), OR
+    //   * the library tab is focused and this slide is the currently
+    //     displayed one (`index === currentIndex && isTabFocused`). This
+    //     covers auto-rotation, swipe paging, dot presses, and inter-slide
+    //     navigation even when native TV focus has not yet shifted onto
+    //     the new slide's button.
+    //
+    // Suppressed when:
+    //   * the sidebar holds TV focus,
+    //   * any library shelves card holds TV focus (Continue Watching,
+    //     Downloads, horizontal shelves),
+    //   * the slide sits at the by-design inactive index.
+    const showActiveStyle = isTV
+        && (btnFocused || (index === currentIndex && isTabFocused))
+        && index !== INACTIVE_SLIDE_INDEX
+        && !isSidebarFocused
+        && !isLibraryShelvesFocused
     const btnScale = useSharedValue(1)
     React.useEffect(() => {
         btnScale.set(withTiming(btnFocused ? 1.08 : 1, { duration: 150 }))
@@ -393,23 +454,31 @@ function LibraryHeroSlide({
             style={{ width: screenWidth, height: heroHeight }}
             className="relative flex justify-end"
         >
-            <Pressable
-                style={ABSOLUTE_FILL_STYLE}
-                onPress={() => {
-                    router.push(`/(app)/entry/${type}/${item.id}`)
-                }}
-            />
+            {/* Background tap target — only rendered on non-TV platforms.
+                On TV the absolute-fill Pressable occupies the full slide
+                bounds; even with focusable={false} it physically blocks
+                tvOS's spatial focus vectors heading LEFT from the action
+                button, choking the nextFocusLeft chain to the sidebar.
+                Mobile uses touch, so omitting this on TV costs nothing. */}
+            {!isTV && (
+                <Pressable
+                    style={ABSOLUTE_FILL_STYLE}
+                    onPress={() => {
+                        router.push(`/(app)/entry/${type}/${item.id}`)
+                    }}
+                />
+            )}
 
             <Animated.View
                 pointerEvents="box-none"
                 style={animatedContentStyle}
                 className={cn("flex flex-col gap-2.5 justify-end", isTV ? "px-8 pb-20" : "px-5 pb-16")}
             >
-                <Pressable
-                    onPress={() => {
-                        router.push(`/(app)/entry/${type}/${item.id}`)
-                    }}
-                >
+                {/* On TV: render text-only (no Pressable wrapper) so it does
+                    not introduce a competing spatial focus target. On
+                    mobile, the title is tappable and navigates to the
+                    entry screen. */}
+                {isTV ? (
                     <Text
                         numberOfLines={2}
                         style={{ fontSize: titleFontSize }}
@@ -417,7 +486,21 @@ function LibraryHeroSlide({
                     >
                         {item.title}
                     </Text>
-                </Pressable>
+                ) : (
+                    <Pressable
+                        onPress={() => {
+                            router.push(`/(app)/entry/${type}/${item.id}`)
+                        }}
+                    >
+                        <Text
+                            numberOfLines={2}
+                            style={{ fontSize: titleFontSize }}
+                            className="text-white font-extrabold tracking-tight leading-9"
+                        >
+                            {item.title}
+                        </Text>
+                    </Pressable>
+                )}
 
                 <View className="flex-row items-center gap-1.5 flex-wrap">
                     {item.genres.map((genre, idx) => (
@@ -432,21 +515,57 @@ function LibraryHeroSlide({
                     ))}
                 </View>
 
-                <View className="flex-row mt-1" pointerEvents="box-none">
+                <View
+                    className="flex-row mt-1"
+                    pointerEvents="box-none"
+                    // Force-mount-control off-screen slide action-button
+                    // wrappers when a library shelf has TV focus. tvOS
+                    // caches the layout of every slide inside the
+                    // horizontally offset ScrollView, so on real hardware a
+                    // slide whose `currentIndex > 0` places the off-screen
+                    // Slide 0's button at `x = -screenWidth` — directly in
+                    // the spatial LEFT channel between a media card and
+                    // the sidebar. `focusable={false}` on the inner Pressable
+                    // is not enough; Apple TV's spatial engine still snags
+                    // on the wrapper rect and absorbs DPAD LEFT before the
+                    // `nextFocusLeft={sidebarTag}` chain on the media card
+                    // can fire. `display:'none'` unmounts the wrapper from
+                    // the native focus tree entirely. Only the active slide
+                    // stays mounted, so inter-slide navigation is unaffected.
+                    style={isTV && isLibraryShelvesFocused && index !== currentIndex
+                        ? { display: "none" }
+                        : undefined}
+                >
                     <Pressable
-                        focusable={isTV}
-                        hasTVPreferredFocus={isTV && index === 0}
-                        {...(isTV && index === 0 && sidebarTag ? { nextFocusLeft: sidebarTag } : {})}
+                        // Suppressed from the focus tree when any library
+                        // shelf has TV focus. Without this, RN TV's diagonal
+                        // up-left spatial search from a media card would
+                        // still pick the carousel's current-slide action
+                        // button as a "left" target, beating the
+                        // `nextFocusLeft={sidebarTag}` chain on the media
+                        // card. Yanking the carousel out of the focus tree
+                        // whenever shelves are focused makes the shelf's
+                        // chain the only leftward option, which RN TV honors.
+                        // `hasTVPreferredFocus` is intentionally NOT set:
+                        // tvOS aggressively re-evaluates the preferred focus
+                        // hint on every layout shift / re-render. The
+                        // backdrop's continuous pan animation triggers
+                        // re-evaluation often enough that the carousel
+                        // yanks focus back from the sidebar mid-flight.
+                        focusable={isTV && !isLibraryShelvesFocused}
+                        // Every slide's button keeps a focus chain leftward
+                        // to the sidebar — not just slide 0. The user can
+                        // land on any slide and exit the carousel via DPAD
+                        // LEFT regardless of the carousel's currentIndex.
+                        {...(isTV && sidebarTag ? { nextFocusLeft: sidebarTag } : {})}
                         onFocus={() => {
                             setBtnFocused(true)
-                            onCarouselFocus()
                             if (isTV && index !== currentIndex) {
                                 onSlideFocus?.(index)
                             }
                         }}
                         onBlur={() => {
                             setBtnFocused(false)
-                            onCarouselBlur()
                         }}
                         onPress={() => onActionPress(item)}
                         android_ripple={{ color: "rgba(255,255,255,0.1)" }}

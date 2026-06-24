@@ -24,6 +24,19 @@ type EditAnilistEntryProps = {
     type: "anime" | "manga"
     buttonSize?: "sm" | "default" | "lg" | "icon"
     buttonClassName?: string
+    /**
+     * Visual shape of the trigger button. Defaults to `"pill"` so any
+     * existing callers keep their previous rounded-full look. Pass
+     * `"rect"` from contexts (e.g. the media entry header) where the
+     * button should sit flush alongside other rectangular controls.
+     */
+    roundedShape?: "pill" | "rect"
+    /**
+     * Optional override for the trigger button's visible label when the
+     * entry is not yet on a list. Defaults to a bare add icon. Useful in
+     * dense layouts where the icon alone isn't self-explanatory.
+     */
+    addLabel?: string
 }
 
 type FormState = {
@@ -68,7 +81,7 @@ function createInitialState(entry?: Anime_Entry | Manga_Entry, isNotYetReleased:
 }
 
 export function EditAnilistEntry(props: EditAnilistEntryProps) {
-    const { entry, type, buttonSize = "sm", buttonClassName } = props
+    const { entry, type, buttonSize = "sm", buttonClassName, roundedShape = "pill", addLabel } = props
 
     const [open, setOpen] = React.useState(false)
     const lastScoreSliderStepRef = React.useRef<number | null>(null)
@@ -207,27 +220,53 @@ export function EditAnilistEntry(props: EditAnilistEntryProps) {
         )
     }, [entry?.media?.title?.userPreferred, entry?.mediaId, isConnected, removeEntry, type])
 
+    const triggerShapeClass = roundedShape === "rect" ? "rounded-md" : "rounded-full"
+    const triggerSizeClass = buttonSize === "sm"
+        ? (roundedShape === "rect" ? "h-9 px-3" : "h-8 px-4 py-0")
+        : ""
+    /**
+     * Header-label rendering helper. Renders the action's leading icon
+     * paired with a textual label inside a flex-row so the icon and
+     * label stay horizontally aligned with a 6px gap.
+     */
+    const renderIconLabel = (iconName: "add-outline" | "create-outline", label: string) => (
+        <View className="flex-row items-center gap-1.5">
+            <Ionicons name={iconName} size={15} color="#fff" />
+            <Text className="text-sm font-semibold text-foreground">{label}</Text>
+        </View>
+    )
+
+    // When callers force an `addLabel`, the trigger renders a "+ Add to"
+    // icon-label affordance regardless of whether the entry is already on
+    // the list \u2014 mutations still flow through `handleOpenPress` which
+    // opens the same edit sheet. This keeps the header action strip
+    // visually consistent on TV where a row of mixed icons reads poorly.
+
     return (
         <>
             {isInList && <Button
                 variant="outline"
                 size={buttonSize}
-                className={cn("rounded-full", buttonSize === "sm" ? "h-8 px-4 py-0" : "", buttonClassName)}
+                className={cn(triggerShapeClass, triggerSizeClass, buttonClassName)}
                 onPress={handleOpenPress}
             >
-                <Text className="text-foreground">
-                    <Ionicons name="create-outline" size={15} />
-                </Text>
+                {addLabel
+                    ? renderIconLabel("add-outline", addLabel)
+                    : <Text className="text-foreground">
+                        <Ionicons name="create-outline" size={15} />
+                    </Text>}
             </Button>}
             {!isInList && <Button
                 variant="outline"
                 size={buttonSize}
-                className={cn("rounded-full", buttonSize === "sm" ? "h-8 px-4 py-0" : "", buttonClassName)}
+                className={cn(triggerShapeClass, triggerSizeClass, buttonClassName)}
                 onPress={handleOpenPress}
             >
-                <Text className="text-foreground">
-                    <Ionicons name="add-outline" size={15} />
-                </Text>
+                {addLabel
+                    ? renderIconLabel("add-outline", addLabel)
+                    : <Text className="text-foreground">
+                        <Ionicons name="add-outline" size={15} />
+                    </Text>}
             </Button>}
 
             <SeaBottomSheet
@@ -400,8 +439,8 @@ const ScoreStepper = React.memo(function ScoreStepper({ value, onChange }: Score
         valueRef.current = value
     }, [value])
 
-    const intervalRef = React.useRef<NodeJS.Timeout | null>(null)
-    const timeoutRef = React.useRef<NodeJS.Timeout | null>(null)
+    const intervalRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+    const timeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
 
     const updateScore = React.useCallback((direction: "increment" | "decrement") => {
         const current = Number.parseFloat(valueRef.current) || 0

@@ -1,4 +1,5 @@
 import { useIsTV } from "@/hooks/use-device"
+import { cn } from "@/lib/utils"
 import * as React from "react"
 import { LayoutChangeEvent, Pressable, Text, View } from "react-native"
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated"
@@ -12,9 +13,44 @@ type SegmentedControlProps<T extends string = string> = {
     options: SegmentedControlOption<T>[]
     value: T
     onChange: (value: T) => void
+    hasTVPreferredFocus?: boolean
 }
 
-export function SegmentedControl<T extends string = string>({ options, value, onChange }: SegmentedControlProps<T>) {
+function OptionPressable({ option, index, active, isTV, hasTVPreferredFocus, onPress }: {
+    option: SegmentedControlOption
+    index: number
+    active: boolean
+    isTV: boolean
+    hasTVPreferredFocus: boolean | undefined
+    onPress: () => void
+}) {
+    const [focused, setFocused] = React.useState(false)
+    return (
+        <Pressable
+            onPress={onPress}
+            focusable={isTV}
+            hasTVPreferredFocus={isTV && hasTVPreferredFocus && index === 0}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            className={cn(
+                "flex-1 items-center justify-center h-full rounded-full z-10",
+                focused && "bg-white/20",
+            )}
+        >
+            <Text
+                className={cn(
+                    "text-sm",
+                    active ? "text-white font-semibold" : "text-white/40 font-medium",
+                    focused && !active && "text-white/70",
+                )}
+            >
+                {option.label}
+            </Text>
+        </Pressable>
+    )
+}
+
+export function SegmentedControl<T extends string = string>({ options, value, onChange, hasTVPreferredFocus }: SegmentedControlProps<T>) {
     const isTV = useIsTV()
     const [width, setWidth] = React.useState(0)
     const activeIndex = options.findIndex(opt => opt.value === value)
@@ -64,18 +100,15 @@ export function SegmentedControl<T extends string = string>({ options, value, on
             {options.map((option, index) => {
                 const active = index === activeIndex
                 return (
-                    <Pressable
+                    <OptionPressable
                         key={option.value}
+                        option={option}
+                        index={index}
+                        active={active}
+                        isTV={isTV}
+                        hasTVPreferredFocus={hasTVPreferredFocus}
                         onPress={() => onChange(option.value)}
-                        focusable={isTV}
-                        className="flex-1 items-center justify-center h-full rounded-full z-10"
-                    >
-                        <Text
-                            className={active ? "text-white font-semibold text-sm" : "text-white/40 font-medium text-sm"}
-                        >
-                            {option.label}
-                        </Text>
-                    </Pressable>
+                    />
                 )
             })}
         </View>

@@ -6,7 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { COLORS } from "@/constants/colors"
 import { cn } from "@/lib/utils"
 import Ionicons from "@expo/vector-icons/Ionicons"
-import { __sidebar_menuOpenAtom } from "@/atoms/sidebar.atoms"
+import { __sidebar_focusedAtom, __sidebar_menuOpenAtom } from "@/atoms/sidebar.atoms"
 import { BottomTabNavigationOptions } from "@react-navigation/bottom-tabs"
 import { useAtom } from "jotai"
 import * as React from "react"
@@ -38,6 +38,7 @@ export function SidebarShell({
     const isExpanded = focusedIndex !== null
 
     const [menuOpen, setMenuOpen] = useAtom(__sidebar_menuOpenAtom)
+    const [, setSidebarFocused] = useAtom(__sidebar_focusedAtom)
     const isProgrammaticRef = React.useRef(false)
     const prevMenuOpenRef = React.useRef(menuOpen)
 
@@ -84,6 +85,14 @@ export function SidebarShell({
             return () => clearTimeout(timer)
         }
     }, [focusedIndex, setMenuOpen])
+
+    // Publish the synchronous focus state to the rest of the app. This runs
+    // independently of the 100ms grace window used by `__sidebar_menuOpenAtom`,
+    // so consumers (e.g. the hero carousel) get crisp "is sidebar focused"
+    // updates without the visual lag.
+    React.useEffect(() => {
+        setSidebarFocused(focusedIndex !== null)
+    }, [focusedIndex, setSidebarFocused])
 
     const sidebarWidth = useSharedValue(80)
     const labelOpacity = useSharedValue(0)

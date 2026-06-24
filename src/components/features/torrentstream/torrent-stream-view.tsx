@@ -2,7 +2,6 @@ import { Anime_Entry, Anime_Episode } from "@/api/generated/types"
 import { useServerStatus } from "@/atoms/server.atoms"
 import { EpisodeCardList } from "@/components/features/anime/episode-card-list"
 import { AnimeEpisodeSection } from "@/components/features/media/anime-entry-library-view"
-import { LabeledSwitch } from "@/components/shared/labeled-switch"
 import { SegmentedControl } from "@/components/shared/segmented-control"
 import { Surface } from "@/components/shared/surface"
 import { getSequentialContinueWatchingSpoilerActive } from "@/lib/anime-spoilers"
@@ -20,12 +19,8 @@ type TorrentStreamViewProps = {
     onEpisodePress: (episode: Anime_Episode) => void
     isEpisodeSelectionLocked: boolean
     loadingEpisodeNumber: number | null
-    autoSelect: boolean
-    autoSelectFile: boolean
     streamMode: StreamMode
     onSelectStreamMode: (mode: StreamMode) => void
-    onToggleAutoSelect: () => void
-    onToggleAutoSelectFile: () => void
     onToggleUsePreviousBatch: () => void
     usePreviousBatch: boolean
     hasMappingError: boolean
@@ -41,12 +36,8 @@ export function TorrentStreamView({
     onEpisodePress,
     isEpisodeSelectionLocked,
     loadingEpisodeNumber,
-    autoSelect,
-    autoSelectFile,
     streamMode,
     onSelectStreamMode,
-    onToggleAutoSelect,
-    onToggleAutoSelectFile,
     onToggleUsePreviousBatch,
     usePreviousBatch,
     hasMappingError,
@@ -62,57 +53,34 @@ export function TorrentStreamView({
     const handleAvailableEpisodePress = React.useMemo(() => {
         return isEpisodeSelectionLocked ? undefined : onEpisodePress
     }, [isEpisodeSelectionLocked, onEpisodePress])
+    const showModePicker = availableModes.length > 1
 
     return (
         <>
 
-            <View className="px-4 mb-5">
-                <Surface variant="muted" className="p-3.5 gap-3.5">
-                    {availableModes.length > 1 && (
-                        <SegmentedControl
-                            options={[
-                                { value: "torrent", label: "Torrent" },
-                                { value: "debrid", label: "Debrid" },
-                            ]}
-                            value={streamMode}
-                            onChange={onSelectStreamMode}
-                        />
-                    )}
+            {(showModePicker || hasMappingError) && (
+                <View className="px-4 mb-5">
+                    <Surface variant="muted" className="p-3.5 gap-3.5">
+                        {showModePicker && (
+                            <SegmentedControl
+                                options={[
+                                    { value: "torrent", label: "Torrent" },
+                                    { value: "debrid", label: "Debrid" },
+                                ]}
+                                value={streamMode}
+                                onChange={onSelectStreamMode}
+                            />
+                        )}
 
-                    {hasMappingError && (
-                        <Text className="text-yellow-200 text-xs leading-relaxed">
-                            AniDB mapping is missing for this title. Manual release selection may be required.
-                        </Text>
-                    )}
+                        {hasMappingError && (
+                            <Text className="text-yellow-200 text-xs leading-relaxed">
+                                AniDB mapping is missing for this title. Manual release selection may be required.
+                            </Text>
+                        )}
 
-                    <LabeledSwitch
-                        label={streamMode === "debrid" ? "Auto-select debrid stream" : "Auto-select torrent"}
-                        checked={autoSelect}
-                        onToggle={onToggleAutoSelect}
-                        helper={streamMode === "debrid"
-                            ? "Automatically pick the best torrent and debrid file for the episode."
-                            : "Automatically pick the best torrent and file for the episode."}
-                    />
-
-                    {!autoSelect && usePreviousBatch && (
-                        <LabeledSwitch
-                            label="Reuse previous batch"
-                            checked={usePreviousBatch}
-                            onToggle={onToggleUsePreviousBatch}
-                            helper="Reuse the previously selected batch torrent for subsequent episodes when possible."
-                        />
-                    )}
-
-                    {!autoSelect && !usePreviousBatch && (
-                        <LabeledSwitch
-                            label="Auto-select file"
-                            checked={autoSelectFile}
-                            onToggle={onToggleAutoSelectFile}
-                            helper={"Automatically select the matching file from batch torrents."}
-                        />
-                    )}
-                </Surface>
-            </View>
+                    </Surface>
+                </View>
+            )}
 
             {continueEpisodes.length > 0 && (
                 <View className="mb-6">

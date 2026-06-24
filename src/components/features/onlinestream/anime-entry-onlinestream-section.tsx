@@ -1,20 +1,26 @@
-import type { Anime_Entry, Anime_Episode, Onlinestream_Episode } from "@/api/generated/types"
+import type { Anime_Entry, Anime_Episode, HibikeOnlinestream_SearchResult, Onlinestream_Episode } from "@/api/generated/types"
+import {
+    useGetOnlinestreamMapping,
+    useOnlinestreamManualMapping,
+    useOnlinestreamManualSearch,
+    useRemoveOnlinestreamMapping,
+} from "@/api/hooks/onlinestream.hooks"
 import { animeEntryPlaybackIntentAtom } from "@/atoms/anime-entry.atoms"
 import { EpisodeListItem } from "@/components/features/anime/episode-list-item"
-import { OnlinestreamManualMatchModal } from "@/components/features/onlinestream/onlinestream-manual-match-modal"
 import { useOnlinestreamController } from "@/components/features/onlinestream/use-onlinestream-controller"
 import { CenteredSpinner } from "@/components/shared/centered-spinner"
 import { EPISODE_PAGE_SIZE, EpisodePageSelector } from "@/components/shared/episode-page-selector"
-import { LabeledSwitch } from "@/components/shared/labeled-switch"
 import { NativeSelect } from "@/components/shared/native-select"
 import { Surface } from "@/components/shared/surface"
 import { FormSectionLabel } from "@/components/ui/form-field"
+import { TvFocusablePressable } from "@/components/ui/tv-focusable"
+import { useIsTV } from "@/hooks/use-device"
 import { usePlaybackCoordinator } from "@/lib/player"
 import { cn } from "@/lib/utils"
 import { Ionicons } from "@expo/vector-icons"
 import { useAtom } from "jotai"
 import * as React from "react"
-import { ActivityIndicator, Pressable, Text, useWindowDimensions, View } from "react-native"
+import { ActivityIndicator, Pressable, Text, TextInput, useWindowDimensions, View } from "react-native"
 
 type AnimeEntryOnlinestreamSectionProps = {
     entry: Anime_Entry
@@ -23,8 +29,71 @@ type AnimeEntryOnlinestreamSectionProps = {
 export function AnimeEntryOnlinestreamSection({ entry }: AnimeEntryOnlinestreamSectionProps) {
     const controller = useOnlinestreamController({ entry })
     const { playOnlineStreamEpisode } = usePlaybackCoordinator(entry)
+    const isTV = useIsTV()
     const [playbackIntent, setPlaybackIntent] = useAtom(animeEntryPlaybackIntentAtom)
     const [manualMatchOpen, setManualMatchOpen] = React.useState(false)
+
+    const searchTriggerRef = React.useRef<React.ComponentRef<typeof Pressable>>(null)
+
+    const mediaTitle = React.useMemo(
+        () =>
+            entry.media?.title?.userPreferred
+            ?? entry.media?.title?.english
+            ?? entry.media?.title?.romaji
+            ?? "",
+        [entry.media?.title?.userPreferred, entry.media?.title?.english, entry.media?.title?.romaji],
+    )
+    const [query, setQuery] = React.useState(mediaTitle)
+
+    const { data: currentMapping } = useGetOnlinestreamMapping({
+        provider: controller.provider,
+        mediaId: controller.mediaId ?? 0,
+    })
+    const { mutate: runSearch, data: searchResults, isPending: isSearching } = useOnlinestreamManualSearch(
+        controller.mediaId ?? 0,
+        controller.provider,
+    )
+    const { mutate: mapAnime, isPending: isMapping } = useOnlinestreamManualMapping()
+    const { mutate: removeMapping, isPending: isRemoving } = useRemoveOnlinestreamMapping()
+
+    React.useEffect(() => {
+        if (manualMatchOpen) setQuery(mediaTitle)
+    }, [manualMatchOpen, mediaTitle])
+
+    // Single close path so every route that dismisses the panel (X button,
+    // selecting a mapping, removing a mapping) bounces focus back to the
+    // trigger that opened it. Reusing this for onSuccess callbacks avoids
+    // leaving the D-pad stranded on a vanished element.
+    const closeManualMatch = React.useCallback(() => {
+        setManualMatchOpen(false)
+        if (isTV) {
+            // Defer so the panel's unmount has settled before we steal focus.
+            setTimeout(() => searchTriggerRef.current?.focus(), 16)
+        }
+    }, [isTV])
+
+    const handleSearch = React.useCallback(() => {
+        if (!query.trim() || !controller.provider) return
+        runSearch({ provider: controller.provider, query: query.trim(), dubbed: controller.dubbed })
+    }, [query, controller.provider, controller.dubbed, runSearch])
+
+    const handleSelectResult = React.useCallback((result: HibikeOnlinestream_SearchResult) => {
+        if (!controller.provider) return
+        mapAnime(
+            { provider: controller.provider, mediaId: controller.mediaId ?? 0, animeId: result.id },
+            { onSuccess: closeManualMatch },
+        )
+    }, [controller.provider, controller.mediaId, mapAnime, closeManualMatch])
+
+    const handleRemoveMapping = React.useCallback(() => {
+        if (!controller.provider) return
+        removeMapping(
+            { provider: controller.provider, mediaId: controller.mediaId ?? 0 },
+            { onSuccess: closeManualMatch },
+        )
+    }, [controller.provider, controller.mediaId, removeMapping, closeManualMatch])
+
+
 
     const onlinestreamEpisodeMap = React.useMemo(() => {
         const map = new Map<number, Onlinestream_Episode>()
@@ -127,6 +196,33 @@ export function AnimeEntryOnlinestreamSection({ entry }: AnimeEntryOnlinestreamS
                             <ActivityIndicator size="small" color="rgba(255,255,255,0.5)" />
                         ) : controller.providerExtensions.length === 0 ? (
                             <Text className="text-sm text-white/35">No online streaming extensions installed</Text>
+                        ) : isTV ? (
+                            <View className="flex-row flex-wrap gap-2">
+                                {controller.providerExtensions.map(p => {
+                                    const selected = controller.provider === p.id
+                                    return (
+                                        <TvFocusablePressable
+                                            key={p.id}
+                                            hasTVPreferredFocus={selected}
+                                            focusedClassName="border-brand-400"
+                                            onPress={() => controller.setProvider(p.id)}
+                                            className={cn(
+                                                "h-11 flex-row items-center justify-center gap-2 rounded-md border px-5",
+                                                selected
+                                                    ? "border-brand-300 bg-brand-300/15"
+                                                    : "border-white/10 bg-white/[0.04]",
+                                            )}
+                                        >
+                                            <Text className={cn(
+                                                "text-sm font-semibold",
+                                                selected ? "text-brand-300" : "text-white/70",
+                                            )}>
+                                                {p.name}
+                                            </Text>
+                                        </TvFocusablePressable>
+                                    )
+                                })}
+                            </View>
                         ) : (
                             <NativeSelect
                                 options={controller.providerExtensions.map(p => ({ id: p.id, label: p.name }))}
@@ -173,17 +269,6 @@ export function AnimeEntryOnlinestreamSection({ entry }: AnimeEntryOnlinestreamS
 
 
                     <View className="items-center gap-4">
-                        {controller.currentProvider?.supportsDub ? (
-                            <LabeledSwitch
-                                label="Dubbed"
-                                checked={controller.dubbed}
-                                onToggle={() => controller.setDubbed(!controller.dubbed)}
-                            />
-                        ) : (
-                            <View />
-                        )}
-
-
                         {controller.availableQualities.length > 1 && (
                             <View className="gap-2 w-full">
                                 <FormSectionLabel>Quality</FormSectionLabel>
@@ -224,34 +309,158 @@ export function AnimeEntryOnlinestreamSection({ entry }: AnimeEntryOnlinestreamS
                             </View>
                         )}
 
-                        <View className="flex-row gap-2">
+                        <View className="flex-row w-full gap-2">
 
-                            <Pressable
-                                onPress={() => setManualMatchOpen(true)}
-                                className="h-9 w-9 items-center justify-center rounded-full bg-white/[0.04] border border-white/10 active:bg-white/10"
+                            {controller.currentProvider?.supportsDub && (
+                                <TvFocusablePressable
+                                    onPress={() => controller.setDubbed(!controller.dubbed)}
+                                    accessibilityLabel={controller.dubbed ? "Dubbed (on)" : "Dubbed (off)"}
+                                    focusedClassName="border-brand-400"
+                                    className={cn(
+                                        "h-9 flex-1 flex-row items-center justify-center gap-1.5 rounded-full border px-3.5",
+                                        controller.dubbed
+                                            ? "border-brand-300 bg-brand-300/15"
+                                            : "border-white/10 bg-white/[0.04] active:bg-white/10",
+                                    )}
+                                >
+                                    <Text className={cn(
+                                        "text-sm",
+                                        controller.dubbed ? "font-semibold text-brand-300" : "font-medium text-foreground/70",
+                                    )} numberOfLines={1}>Dubbed</Text>
+                                </TvFocusablePressable>
+                            )}
+
+                            <TvFocusablePressable
+                                ref={searchTriggerRef}
+                                onPress={() => setManualMatchOpen(prev => !prev)}
+                                accessibilityLabel="Matching Problems"
+                                focusedClassName="border-brand-400"
+                                className="h-9 flex-1 flex-row items-center justify-center gap-1.5 rounded-full border border-white/10 px-3.5 bg-white/[0.04] active:bg-white/10"
                             >
-                                <Ionicons name="search-outline" size={16} color="rgba(255,255,255,0.6)" />
-                            </Pressable>
+                                <Text className="text-sm font-medium text-foreground/70" numberOfLines={1}>Matching Problems?</Text>
+                            </TvFocusablePressable>
 
 
-                            <Pressable
+                            <TvFocusablePressable
                                 onPress={controller.handleEmptyCache}
                                 disabled={controller.isEmptyingCache}
-                                className="h-9 w-9 items-center justify-center rounded-full bg-white/[0.04] border border-white/10 active:bg-white/10"
+                                accessibilityLabel="Refresh Episodes"
+                                focusedClassName="border-brand-400"
+                                className="h-9 flex-1 flex-row items-center justify-center gap-1.5 rounded-full border border-white/10 px-3.5 bg-white/[0.04] active:bg-white/10"
                             >
                                 {controller.isEmptyingCache ? (
                                     <ActivityIndicator size="small" color="rgba(255,255,255,0.5)" />
                                 ) : (
-                                    <Ionicons name="refresh-outline" size={16} color="rgba(255,255,255,0.6)" />
+                                    <Text className="text-sm font-medium text-foreground/70" numberOfLines={1}>Refresh Episodes</Text>
                                 )}
-                            </Pressable>
+                            </TvFocusablePressable>
                         </View>
                     </View>
                 </Surface>
+        </View>
+
+
+        {manualMatchOpen && (
+            <View className="px-4 mb-5">
+                <View className="bg-card/30 border border-border/50 rounded-2xl p-4 gap-3">
+                    <View className="flex-row items-center gap-2">
+                        <Text className="text-lg font-bold text-foreground flex-1">Manual Match</Text>
+                    </View>
+
+                    <View className="flex-row gap-2">
+                        <View className="flex-1 h-11 bg-card/30 border border-border/50 rounded-xl px-3 flex-row items-center">
+                            <Ionicons name="search" size={16} color="rgba(255,255,255,0.4)" />
+                            <TextInput
+                                value={query}
+                                onChangeText={setQuery}
+                                onSubmitEditing={handleSearch}
+                                returnKeyType="search"
+                                placeholder="Search title..."
+                                placeholderTextColor="rgba(255,255,255,0.3)"
+                                className="ml-2 flex-1 text-sm text-white"
+                                autoCapitalize="none"
+                            />
+                        </View>
+                        <Pressable
+                            onPress={handleSearch}
+                            disabled={isSearching || !query.trim()}
+                            focusable={isTV}
+                            className={cn(
+                                "h-11 px-4 items-center justify-center rounded-xl",
+                                isSearching || !query.trim()
+                                    ? "bg-card/30 border border-border/50"
+                                    : "bg-primary active:opacity-80",
+                            )}
+                        >
+                            {isSearching ? (
+                                <ActivityIndicator size="small" color="white" />
+                            ) : (
+                                <Text className="text-sm font-medium text-primary-foreground">Search</Text>
+                            )}
+                        </Pressable>
+                    </View>
+
+                    {currentMapping?.animeId && (
+                        <View className="bg-brand-300/10 border border-brand-300/20 rounded-xl px-3 py-2">
+                            <Text className="text-xs text-brand-300">
+                                Currently mapped to: {currentMapping.animeId}
+                            </Text>
+                        </View>
+                    )}
+
+                    {searchResults && searchResults.length === 0 && (
+                        <View className="py-8 items-center">
+                            <Text className="text-white/40 text-sm">No results found</Text>
+                        </View>
+                    )}
+
+                    {searchResults && searchResults.map((result, index) => (
+                        <Pressable
+                            key={`${result.id}-${index}`}
+                            onPress={() => handleSelectResult(result)}
+                            disabled={isMapping}
+                            focusable={isTV}
+                            className={cn(
+                                "px-4 py-3.5 bg-card/30 border-x border-border/50 active:bg-white/10",
+                                index === 0 && "rounded-t-2xl border-t",
+                                index === searchResults.length - 1 && "rounded-b-2xl border-b",
+                                index < searchResults.length - 1 && "border-b border-b-border/30",
+                            )}
+                        >
+                            <Text className="text-sm font-medium text-foreground" numberOfLines={2}>
+                                {result.title}
+                            </Text>
+                            <Text className="text-xs text-white/40 mt-1">
+                                {result.subOrDub === "both" ? "Sub & Dub" : result.subOrDub === "dub" ? "Dub" : "Sub"}
+                            </Text>
+                        </Pressable>
+                    ))}
+
+                    {currentMapping?.animeId && (
+                        <Pressable
+                            onPress={handleRemoveMapping}
+                            disabled={isRemoving}
+                            focusable={isTV}
+                            className={cn(
+                                "h-11 mt-1 items-center justify-center rounded-xl border",
+                                isRemoving
+                                    ? "border-red-500/20 bg-red-500/[0.02]"
+                                    : "border-red-500/30 bg-red-500/[0.04] active:bg-red-500/[0.08]",
+                            )}
+                        >
+                            {isRemoving ? (
+                                <ActivityIndicator size="small" color="#ef4444" />
+                            ) : (
+                                <Text className="text-sm font-medium text-red-400">Remove mapping</Text>
+                            )}
+                        </Pressable>
+                    )}
+                </View>
             </View>
+        )}
 
 
-            {controller.isLoadingEpisodes && (
+        {controller.isLoadingEpisodes && (
                 <View className="py-10">
                     <CenteredSpinner />
                 </View>
@@ -320,19 +529,6 @@ export function AnimeEntryOnlinestreamSection({ entry }: AnimeEntryOnlinestreamS
             )}
 
 
-            <OnlinestreamManualMatchModal
-                open={manualMatchOpen}
-                onOpenChange={setManualMatchOpen}
-                mediaId={controller.mediaId ?? 0}
-                provider={controller.provider}
-                dubbed={controller.dubbed}
-                mediaTitle={
-                    entry.media?.title?.userPreferred
-                    ?? entry.media?.title?.english
-                    ?? entry.media?.title?.romaji
-                    ?? ""
-                }
-            />
         </>
     )
 }

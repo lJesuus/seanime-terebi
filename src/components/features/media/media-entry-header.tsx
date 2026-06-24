@@ -1,4 +1,4 @@
-import { Anime_Entry, Manga_Entry } from "@/api/generated/types"
+import { Anime_Entry, Anime_Episode, Manga_Entry } from "@/api/generated/types"
 import { useServerStatus } from "@/atoms/server.atoms"
 import { SeaImage } from "@/components/shared/sea-image"
 import { Button } from "@/components/ui/button"
@@ -13,6 +13,7 @@ import * as React from "react"
 import { InteractionManager, Pressable, Text, View } from "react-native"
 import Animated, { SharedValue, useAnimatedStyle, useSharedValue } from "react-native-reanimated"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
+import { cn } from "@/lib/utils"
 import { EditAnilistEntry } from "./edit-anilist-entry"
 import { MediaEntryAudienceScore, MediaEntryScore } from "./media-entry-score"
 
@@ -240,6 +241,15 @@ type MediaEntryHeaderContentProps = {
     type: "anime" | "manga"
     onTitlePress?: () => void
     nextFocusDown?: number | null
+    /**
+     * Optional anime-specific play affordance. When both `nextEpisode` and
+     * `onPlayPress` are provided, a rectangular "Play" button is rendered
+     * on the right side of the header alongside status / episode number /
+     * add-to-list. For non-anime types or when the next episode is not
+     * yet known, the button is omitted.
+     */
+    nextEpisode?: Anime_Episode
+    onPlayPress?: () => void
 }
 
 const ANIME_LIST_STATUS_LABELS: Record<string, string> = {
@@ -256,10 +266,27 @@ const MANGA_LIST_STATUS_LABELS: Record<string, string> = {
     "CURRENT": "Reading",
 }
 
-function MediaEntryHeaderContentInner({ entry, type, onTitlePress, nextFocusDown }: MediaEntryHeaderContentProps) {
+function MediaEntryHeaderContentInner({
+    entry,
+    type,
+    onTitlePress,
+    nextFocusDown,
+    nextEpisode,
+    onPlayPress,
+}: MediaEntryHeaderContentProps) {
     const isTV = useIsTV()
     const serverStatus = useServerStatus()
     const coverImageUri = entry?.media?.coverImage?.large || entry?.media?.coverImage?.extraLarge
+    const showPlayButton = Boolean(type === "anime" && nextEpisode && onPlayPress)
+    // Track TV focus / pressed state so the Watch button can mirror
+    // the Library hero carousel's two-tone treatment: an inactive rest
+    // state and a brand-bordered active state when focus lands on it.
+    const [playButtonActive, setPlayButtonActive] = React.useState(false)
+    const playButtonRestClass = "bg-white/10"
+    const playButtonActiveClass = "bg-white border-2 border-brand-400/80 shadow-2xl"
+    const playButtonClass = playButtonActive ? playButtonActiveClass : playButtonRestClass
+    const playButtonIconColor = playButtonActive ? "black" : "rgba(255,255,255,0.5)"
+    const playButtonTextClass = playButtonActive ? "text-black" : "text-white/50"
 
     const startDate = entry?.media?.startDate
     const season = entry?.media?.season
@@ -280,8 +307,6 @@ function MediaEntryHeaderContentInner({ entry, type, onTitlePress, nextFocusDown
 
     return (
         <View className="pb-3">
-            <MediaEntryCloseButton />
-
             <View style={{ height: BANNER_HEIGHT }} />
 
 
@@ -305,69 +330,117 @@ function MediaEntryHeaderContentInner({ entry, type, onTitlePress, nextFocusDown
                     </View>
                 </View>
 
-                <View className="flex-1 gap-1.5 pb-1">
-                    <Text
-                        className="text-2xl font-bold leading-6 text-white"
-                        numberOfLines={3}
-                    >
-                        {entry?.media?.title?.userPreferred}
-                    </Text>
-                    {!!alternativeTitle && (
-                        <Text className="text-sm leading-tight text-white/40" numberOfLines={2}>
-                            {alternativeTitle}
+                {/*
+                    The right column is a horizontal two-column layout that
+                    mirrors the requested mockup: an info column on the left
+                    of the right region (title / date / score / description /
+                    status + episode count) and an action column on the right
+                    that stacks the Watch and Add-to-List buttons vertically.
+                    Both buttons share `h-9 px-3 rounded-md` so they read as
+                    a coordinated pair regardless of order.
+                */}
+                <View className="flex-1 flex-row gap-5 pb-1">
+                    <View className="flex-1 gap-1.5">
+                        <Text
+                            className="text-2xl font-bold leading-6 text-white"
+                            numberOfLines={3}
+                        >
+                            {entry?.media?.title?.userPreferred}
                         </Text>
-                    )}
-
-                    {!!formattedStartDate && (
-                        <View className="flex-row flex-wrap items-center gap-1.5">
-                            <Ionicons name="calendar-outline" size={14} color="rgba(255,255,255,0.42)" />
-                            <Text className="text-sm font-medium text-white/40">
-                                {formattedStartDate}
-                                {!!season ? ` · ${capitalize(season)}` : ""}
-                                {!!status ? ` · ${capitalize(status.replaceAll("_", " "))}` : ""}
+                        {!!alternativeTitle && (
+                            <Text className="text-sm leading-tight text-white/40" numberOfLines={2}>
+                                {alternativeTitle}
                             </Text>
-                        </View>
-                    )}
+                        )}
 
-                    {(!!progressLabel || genres.length > 0) && (
-                        <View className="flex-row flex-wrap items-center gap-2">
-                            {!serverStatus?.settings?.anilist?.hideAudienceScore && (
-                                <MediaEntryAudienceScore score={entry?.media?.meanScore} />
-                            )}
-                            {genres.map(genre => (
-                                <View key={genre} className="rounded-full px-0 py-1">
-                                    <Text className="text-xs text-white/70">
-                                        {genre}
-                                    </Text>
-                                </View>
-                            ))}
-                        </View>
-                    )}
-
-                    {!!entry?.media?.description && (
-                        <View className="mt-1">
-                            <Text className="text-sm leading-5 text-white/60" numberOfLines={3}>
-                                {stripHtml(entry.media.description)}
-                            </Text>
-                        </View>
-                    )}
-
-                    <View className="flex flex-row gap-2 items-center flex-wrap">
-                        <EditAnilistEntry entry={entry} type={type} />
-                        {!!progressLabel && (
-                            <View className="rounded-full px-1 py-0">
-                                <Text className="text-lg font-semibold text-white">
-                                    {progressLabel}
+                        {!!formattedStartDate && (
+                            <View className="flex-row flex-wrap items-center gap-1.5">
+                                <Ionicons name="calendar-outline" size={14} color="rgba(255,255,255,0.42)" />
+                                <Text className="text-sm font-medium text-white/40">
+                                    {formattedStartDate}
+                                    {!!season ? ` · ${capitalize(season)}` : ""}
+                                    {!!status ? ` · ${capitalize(status.replaceAll("_", " "))}` : ""}
                                 </Text>
                             </View>
                         )}
-                        {!!listStatusLabel && (
-                            <View className="rounded-full px-1 py-0">
-                                <Text className="text-sm font-semibold text-muted-foreground">
+
+                        {(!serverStatus?.settings?.anilist?.hideAudienceScore || genres.length > 0) && (
+                            <View className="flex-row flex-wrap items-center gap-2">
+                                {!serverStatus?.settings?.anilist?.hideAudienceScore && (
+                                    <MediaEntryAudienceScore score={entry?.media?.meanScore} />
+                                )}
+                                {genres.length > 0 && genres.map(genre => (
+                                    <View key={genre} className="rounded-full px-0 py-1">
+                                        <Text className="text-xs text-white/70">
+                                            {genre}
+                                        </Text>
+                                    </View>
+                                ))}
+                            </View>
+                        )}
+
+                        {!!entry?.media?.description && (
+                            <View>
+                                <Text
+                                    className="text-sm leading-5 text-white/60"
+                                    numberOfLines={3}
+                                >
+                                    {stripHtml(entry.media.description)}
+                                </Text>
+                            </View>
+                        )}
+
+                        <View className="flex-row items-center gap-2 pt-1">
+                            {!!listStatusLabel && (
+                                <Text className="text-xs font-bold text-foreground/65 tracking-wider uppercase">
                                     {listStatusLabel}
                                 </Text>
-                            </View>
+                            )}
+                            {!!progressLabel && (
+                                <Text className="text-xs font-bold text-foreground/65 tracking-wider uppercase">
+                                    {progressLabel}
+                                </Text>
+                            )}
+                        </View>
+                    </View>
+
+                    {/*
+                        Action column: Watch button (when present, for
+                        anime entries with a known next episode) stacked
+                        above Add-to-List. The Add-to-List button always
+                        renders because every entry should be open to
+                        list interaction, including manga entries that
+                        won't have a Watch button.
+                    */}
+                    <View className="gap-2 justify-center pt-4">
+                        {showPlayButton && (
+                            <Pressable
+                                focusable={isTV}
+                                onFocus={() => setPlayButtonActive(true)}
+                                onBlur={() => setPlayButtonActive(false)}
+                                onPressIn={() => setPlayButtonActive(true)}
+                                onPressOut={() => setPlayButtonActive(false)}
+                                onPress={onPlayPress}
+                                className={cn("h-9 px-3 rounded-md", playButtonClass)}
+                            >
+                                <View className="w-full flex-row items-center justify-center gap-1.5">
+                                    <Ionicons name="play" size={15} color={playButtonIconColor} />
+                                    <Text
+                                        className={cn("text-sm font-semibold", playButtonTextClass)}
+                                        numberOfLines={1}
+                                    >
+                                        Watch Episode
+                                    </Text>
+                                </View>
+                            </Pressable>
                         )}
+                            <EditAnilistEntry
+                                entry={entry}
+                                type={type}
+                                roundedShape="rect"
+                                addLabel="Add to list"
+                                buttonClassName="h-9 px-3"
+                            />
                     </View>
                 </View>
             </View>

@@ -207,7 +207,17 @@ export function AnimeEntryLibraryView({
 
     const listHeader = React.useMemo(() => (
             <>
-                <MediaEntryHeaderContent entry={entry} type="anime" onTitlePress={handleTitlePress} nextFocusDown={nextFocusDown} />
+                <MediaEntryHeaderContent
+                    entry={entry}
+                    type="anime"
+                    onTitlePress={handleTitlePress}
+                    nextFocusDown={nextFocusDown}
+                    // Hand the play affordance to the header itself so the
+                    // "Add to list" + "Play" buttons sit on the right side
+                    // of the header alongside the status and episode number.
+                    nextEpisode={unwatchedMainEpisodes[0]}
+                    onPlayPress={unwatchedMainEpisodes[0] ? () => onEpisodePress?.(unwatchedMainEpisodes[0]) : undefined}
+                />
                 <OfflineBanner />
 
                 {currentView && onViewChange && (
@@ -221,11 +231,7 @@ export function AnimeEntryLibraryView({
                 )}
 
                 {isConnected && (
-                    <AnimeEntryActionBar
-                        entry={entry}
-                        nextEpisode={unwatchedMainEpisodes[0]}
-                        onContinueWatching={unwatchedMainEpisodes[0] ? () => onEpisodePress?.(unwatchedMainEpisodes[0]) : undefined}
-                    />
+                    <AnimeEntryActionBar entry={entry} />
                 )}
 
                 {showDeferredContent && unwatchedMainEpisodes.length > 0 && (
@@ -245,7 +251,7 @@ export function AnimeEntryLibraryView({
             </>
         ),
         [continueWatchingSpoilerActive, entry, entryProgress, isConnected, mediaId, onEpisodePress, unwatchedMainEpisodes, watchHistory,
-            showDeferredContent, onTitlePress, currentView, onViewChange, isOffline, hiddenViews, nextFocusDown])
+            showDeferredContent, currentView, onViewChange, isOffline, hiddenViews, nextFocusDown, handleTitlePress, nextFocusDown])
 
     return (
         <View className={showHeaderBackground ? "flex-1 bg-background" : "flex-1 bg-transparent"}>

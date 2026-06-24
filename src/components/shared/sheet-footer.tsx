@@ -1,7 +1,7 @@
-import { Button } from "@/components/ui/button"
+import { TvFocusablePressable } from "@/components/ui/tv-focusable"
 import { cn } from "@/lib/utils"
 import * as React from "react"
-import { View } from "react-native"
+import { Platform, View } from "react-native"
 
 ////////////////////////// Container
 
@@ -11,7 +11,7 @@ type SheetFooterProps = {
 }
 
 export function SheetFooter({ children, className }: SheetFooterProps) {
-    return <View className={cn("flex-row gap-3", className)}>{children}</View>
+    return <View className={cn("flex-row gap-x-3", _isTV && "justify-center gap-x-6", className)}>{children}</View>
 }
 
 ////////////////////////// Footer button
@@ -24,12 +24,26 @@ type SheetFooterButtonProps = {
     onPress: () => void
     disabled?: boolean
     className?: string
+    blockLeft?: boolean
+    blockDown?: boolean
 }
 
+const _isTV = Platform.isTV
 const VARIANT_CLASSES: Record<SheetFooterButtonVariant, string> = {
-    cancel: "h-13 flex-1 rounded-2xl border border-white/10 bg-white/5 active:bg-white/10",
-    primary: "h-13 flex-1 rounded-2xl bg-primary active:opacity-80",
-    destructive: "h-13 flex-1 rounded-2xl bg-red-500/10 border border-red-500/20 active:opacity-80",
+    cancel: `${_isTV ? "h-14 flex-1 min-w-[180px]" : "h-12 flex-1"} items-center justify-center rounded-2xl border border-white/10 bg-white/5 active:bg-white/10`,
+    primary: `${_isTV ? "h-14 flex-1 min-w-[180px]" : "h-12 flex-1"} items-center justify-center rounded-2xl bg-primary active:opacity-80`,
+    destructive: `${_isTV ? "h-14 flex-1 min-w-[180px]" : "h-12 flex-1"} items-center justify-center rounded-2xl bg-red-500/10 border border-red-500/20 active:opacity-80`,
+}
+
+// Focused state mirrors the drawer close button's TV-focus ring so all
+// destructive/primary actions in a sheet adopt the same focus indicator.
+// Primary adopts the close button's exact focused styling so pressing the
+// "Auto Select now" / "Start selected" CTA on TV produces the same visual
+// feedback as the X close button.
+const VARIANT_FOCUSED_CLASSES: Record<SheetFooterButtonVariant, string> = {
+    cancel: "border border-brand-400/80 bg-white/10",
+    primary: "border border-brand-400/80 bg-white/10 text-primary-foreground",
+    destructive: "border border-red-400/80 bg-red-500/20",
 }
 
 export function SheetFooterButton({
@@ -38,15 +52,24 @@ export function SheetFooterButton({
     onPress,
     disabled,
     className,
+    blockLeft,
+    blockDown,
 }: SheetFooterButtonProps) {
     return (
-        <Button
-            variant="unstyled"
-            className={cn(VARIANT_CLASSES[variant], className)}
+        <TvFocusablePressable
             onPress={onPress}
             disabled={disabled}
+            focusable={!disabled}
+            blockLeft={blockLeft}
+            blockDown={blockDown}
+            className={cn(
+                VARIANT_CLASSES[variant],
+                disabled && "opacity-50",
+                className,
+            )}
+            focusedClassName={VARIANT_FOCUSED_CLASSES[variant]}
         >
             {children}
-        </Button>
+        </TvFocusablePressable>
     )
 }

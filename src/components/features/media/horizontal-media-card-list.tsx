@@ -1,9 +1,11 @@
 import { AL_BaseAnime, AL_BaseManga } from "@/api/generated/types"
 import { __media_listPageContentAtom } from "@/atoms/media-list"
+import { TVFocusContext } from "@/contexts/tv-focus-context"
 import { MediaEntryCard } from "@/components/features/media/media-entry-card"
 import { Button } from "@/components/ui/button"
 import { Text } from "@/components/ui/text"
 import { TvFocusablePressable } from "@/components/ui/tv-focusable"
+import { useLibraryShelvesFocus } from "@/hooks/use-library-shelves-focus"
 import { Ionicons } from "@/lib/icons/Ionicons"
 import { buildMediaEntryHref, getMediaEntryKind } from "@/lib/media-entry-route"
 import { cn } from "@/lib/utils"
@@ -71,15 +73,18 @@ function SeeAllButton({
     onPress,
     mediaLength,
     onFocus,
+    onBlur,
 }: {
     onPress: () => void
     mediaLength: number
     onFocus?: (e: any) => void
+    onBlur?: (e: any) => void
 }) {
     return (
         <TvFocusablePressable
             onPress={onPress}
             onFocus={onFocus}
+            onBlur={onBlur}
             style={{ width: CARD_WIDTH, height: CARD_WIDTH * 1.5 }}
             className="rounded-md flex justify-center items-center"
             focusedClassName="bg-white/10 border-2 border-brand-400/80"
@@ -96,7 +101,22 @@ function SeeAllButton({
     )
 }
 
-    const handleFocus = React.useCallback(() => onCardFocus?.(sectionIndex ?? 0), [onCardFocus, sectionIndex])
+    const { onFocus: notifyShelfFocusIn, onBlur: notifyShelfFocusOut } = useLibraryShelvesFocus()
+    const { sidebarTag } = React.useContext(TVFocusContext)
+    // When the user is focused on the leftmost card of this shelf, DPAD
+    // LEFT should jump straight to the sidebar. Other cards in the row use
+    // RN TV's native horizontal scroll focus search to find their way to
+    // the first card, at which point this chain takes over.
+    const firstCardNextFocusLeft = sidebarTag ?? undefined
+
+    const handleFocus = React.useCallback(() => {
+        onCardFocus?.(sectionIndex ?? 0)
+        notifyShelfFocusIn()
+    }, [onCardFocus, sectionIndex, notifyShelfFocusIn])
+
+    const handleBlur = React.useCallback(() => {
+        notifyShelfFocusOut()
+    }, [notifyShelfFocusOut])
 
     const renderItem = React.useCallback(({ item, index }: ListRenderItemInfo<AL_BaseAnime | AL_BaseManga>) => {
         if (!infiniteScroll && index === limit - 1 && media.length > limit) {
@@ -112,9 +132,13 @@ function SeeAllButton({
                     }}
                     mediaLength={media.length}
                     onFocus={handleFocus}
+                    onBlur={handleBlur}
                 />
             )
         }
+
+        const isFirstCard = index === 0
+        const cardFocusLeft = isFirstCard ? firstCardNextFocusLeft : undefined
 
         const itemType = getMediaEntryKind(item, type)
 
@@ -131,6 +155,8 @@ function SeeAllButton({
                 }}
                 hideLibraryBadge={hideLibraryBadge}
                 onFocus={handleFocus}
+                onBlur={handleBlur}
+                nextFocusLeft={cardFocusLeft}
             />
         }
 
@@ -146,8 +172,10 @@ function SeeAllButton({
             }}
             hideLibraryBadge={hideLibraryBadge}
             onFocus={handleFocus}
+            onBlur={handleBlur}
+            nextFocusLeft={cardFocusLeft}
         />
-    }, [infiniteScroll, limit, media, onMediaPress, setMediaListPageContent, showAudienceScore, title, type, hideLibraryBadge, handleFocus])
+    }, [infiniteScroll, limit, media, onMediaPress, setMediaListPageContent, showAudienceScore, title, type, hideLibraryBadge, handleFocus, handleBlur, firstCardNextFocusLeft])
 
     if (media.length === 0) return null
 

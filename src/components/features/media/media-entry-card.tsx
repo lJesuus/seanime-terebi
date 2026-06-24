@@ -194,6 +194,8 @@ type MediaEntryCardProps<T extends "anime" | "manga"> = {
     overlay?: React.ReactNode
     hideProgress?: boolean
     onPress?: () => void
+    onFocus?: (e: any) => void
+    onBlur?: (e: any) => void
     preferFetchedSheetMedia?: boolean
     hideLibraryBadge?: boolean
 }
@@ -208,6 +210,8 @@ export function MediaEntryCard<T extends "anime" | "manga">(props: MediaEntryCar
         nakamaLibraryData: _nakamaLibraryData,
         cardWidth,
         onPress: _onPress,
+        onFocus: _onFocus,
+        onBlur: _onBlur,
         showAudienceScore: _showAudienceScore,
         overlay,
         hideProgress,
@@ -265,7 +269,7 @@ export function MediaEntryCard<T extends "anime" | "manga">(props: MediaEntryCar
     const posterHeight = cardWidth * (cardWidth < 150 ? 1.305 : 1.275)
     const showAnimeLibraryBadge = type === "anime" && !!libraryData && !hideLibraryBadge
     const animeLibraryFileCount = showAnimeLibraryBadge ? libraryData?.mainFileCount : undefined
-    const { onFocus: _onFocus, onBlur: _onBlur, ...pressableRest } = rest as Record<string, any>
+    const pressableRest = rest
 
     return (
         <>

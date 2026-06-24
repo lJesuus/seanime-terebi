@@ -2,7 +2,9 @@ import { Anime_Episode, Continuity_WatchHistory } from "@/api/generated/types"
 import { getEpisodePercentageComplete } from "@/api/hooks/continuity.hooks"
 import { useServerStatus } from "@/atoms/server.atoms"
 import { EpisodeCard } from "@/components/features/anime/episode-card"
+import { useLibraryShelvesFocus } from "@/hooks/use-library-shelves-focus"
 import { getEpisodeSpoilerState } from "@/lib/anime-spoilers"
+import { TVFocusContext } from "@/contexts/tv-focus-context"
 import React from "react"
 import { ActivityIndicator, Dimensions, FlatList, ListRenderItemInfo, Text, View } from "react-native"
 
@@ -56,6 +58,13 @@ export function EpisodeCardList(props: EpisodeCardListProps) {
         cardWidth: cardWidthProp,
     } = props
     const serverStatus = useServerStatus()
+    const { onFocus: notifyShelfFocusIn, onBlur: notifyShelfFocusOut } = useLibraryShelvesFocus()
+    // DPAD LEFT from the leftmost card of this row must jump straight
+    // to the sidebar. Other cards reach it via RN TV's horizontal
+    // scroll/spatial focus search landing on the first card, at which
+    // point this chain takes over.
+    const { sidebarTag } = React.useContext(TVFocusContext)
+    const firstCardNextFocusLeft = sidebarTag ?? undefined
     const resolvedCardWidth = cardWidthProp ?? DEFAULT_CARD_WIDTH
     const resolvedCardRowHeight = Math.ceil(resolvedCardWidth * (9 / 16) + 60)
     const resolvedItemFullWidth = resolvedCardWidth + SPACING
@@ -64,7 +73,7 @@ export function EpisodeCardList(props: EpisodeCardListProps) {
         return item.localFile?.path || `${item.baseAnime?.id ?? "episode"}-${item.episodeNumber}-${index}`
     }, [])
 
-    const renderEpisodeCard = React.useCallback(({ item }: ListRenderItemInfo<Anime_Episode>) => {
+    const renderEpisodeCard = React.useCallback(({ item, index }: ListRenderItemInfo<Anime_Episode>) => {
         const spoiler = getEpisodeSpoilerState(serverStatus, {
             episodeNumber: item.progressNumber || item.episodeNumber,
             watchedProgress,
@@ -75,6 +84,8 @@ export function EpisodeCardList(props: EpisodeCardListProps) {
         const animeTitle = showAnimeTitle
             ? (item.baseAnime?.title?.userPreferred || item.baseAnime?.title?.english || item.baseAnime?.title?.romaji || undefined)
             : undefined
+        const isFirstCard = index === 0
+        const cardFocusLeft = isFirstCard ? firstCardNextFocusLeft : undefined
 
         return (
             <EpisodeCard
@@ -94,9 +105,12 @@ export function EpisodeCardList(props: EpisodeCardListProps) {
                 disabled={disabled}
                 thumbnailOverlay={isLoading ? <EpisodeLoadingBadge /> : undefined}
                 animeTitle={animeTitle}
+                onFocus={notifyShelfFocusIn}
+                onBlur={notifyShelfFocusOut}
+                nextFocusLeft={cardFocusLeft}
             />
         )
-    }, [disabled, loadingEpisodeNumber, mediaId, onEpisodePress, serverStatus, spoilerActive, watchedProgress, watchHistory, showAnimeTitle])
+    }, [disabled, loadingEpisodeNumber, mediaId, onEpisodePress, serverStatus, spoilerActive, watchedProgress, watchHistory, showAnimeTitle, notifyShelfFocusIn, notifyShelfFocusOut, firstCardNextFocusLeft])
 
     const getItemLayout = React.useCallback((_: ArrayLike<Anime_Episode> | null | undefined, index: number) => ({
         length: resolvedItemFullWidth,

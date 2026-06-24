@@ -210,12 +210,8 @@ export function AnimeEntryTorrentStreamSection({ entry }: AnimeEntryTorrentStrea
                     onEpisodePress={torrentStream.handleEpisodePress}
                     isEpisodeSelectionLocked={torrentStream.isEpisodeSelectionLocked}
                     loadingEpisodeNumber={torrentStream.loadingEpisodeNumber}
-                    autoSelect={torrentStream.autoSelect}
-                    autoSelectFile={torrentStream.autoSelectFile}
                     streamMode={torrentStream.streamMode}
                     onSelectStreamMode={torrentStream.setStreamMode}
-                    onToggleAutoSelect={() => torrentStream.setAutoSelect(!torrentStream.autoSelect)}
-                    onToggleAutoSelectFile={() => torrentStream.setAutoSelectFile(!torrentStream.autoSelectFile)}
                     onToggleUsePreviousBatch={() => torrentStream.setUsePreviousBatch(!torrentStream.usePreviousBatch)}
                     usePreviousBatch={torrentStream.usePreviousBatch}
                     hasMappingError={torrentStream.episodeCollection?.hasMappingError ?? false}
@@ -280,6 +276,10 @@ export function AnimeEntryTorrentStreamSection({ entry }: AnimeEntryTorrentStrea
                 availableModes={torrentStream.availableModes}
                 onSelectStreamMode={torrentStream.setStreamMode}
                 onSelectEpisodeNumber={torrentStream.setSelectedEpisodeNumber}
+                autoSelect={torrentStream.autoSelect}
+                autoSelectFile={torrentStream.autoSelectFile}
+                onToggleAutoSelect={() => torrentStream.setAutoSelect(!torrentStream.autoSelect)}
+                onToggleAutoSelectFile={() => torrentStream.setAutoSelectFile(!torrentStream.autoSelectFile)}
             />
         </>
     )

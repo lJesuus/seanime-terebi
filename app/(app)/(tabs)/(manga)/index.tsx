@@ -1,4 +1,5 @@
 import { AL_BaseManga } from "@/api/generated/types"
+import { __libraryShelvesFocusCountAtom } from "@/atoms/library.atoms"
 import { DownloadedMangaList } from "@/components/features/manga/downloaded-manga-list"
 import { HorizontalMediaCardList } from "@/components/features/media/horizontal-media-card-list"
 import { LibraryHeroCarousel } from "@/components/features/media/library-hero-carousel"
@@ -76,6 +77,20 @@ export default function MangaLibraryScreen() {
             if (!isConnected) return
             void refetchRef.current()
         }, [isConnected]),
+    )
+
+    // Mirror of the reset in `(library)/index.tsx`:
+    // `HorizontalMediaCardList` is also mounted outside the manga tab
+    // (discover, profile, entry views), so the focus tracker can leave a
+    // non-zero count behind when the user navigates away and returns.
+    // Reset the counter every time this tab re-gains focus so the hero
+    // carousel's `isLibraryShelvesFocused` signal starts from a clean
+    // baseline.
+    const setLibraryShelvesFocusCount = useSetAtom(__libraryShelvesFocusCountAtom)
+    useFocusEffect(
+        React.useCallback(() => {
+            setLibraryShelvesFocusCount(0)
+        }, [setLibraryShelvesFocusCount]),
     )
 
     const hasHero = isConnected && currentlyReadingEntries.length > 0

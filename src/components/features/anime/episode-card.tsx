@@ -20,6 +20,14 @@ type EpisodeCardProps = {
     disabled?: boolean
     thumbnailOverlay?: React.ReactNode
     animeTitle?: string
+    onFocus?: (e: any) => void
+    onBlur?: (e: any) => void
+    /**
+     * tvOS focus chain: when this card sits at the leftmost position of
+     * its row, DPAD LEFT should jump straight to the sidebar. Forwarded
+     * to the underlying Pressable so RN TV's focus engine honors it.
+     */
+    nextFocusLeft?: number
 }
 
 export const EpisodeCard = React.memo(function EpisodeCard(props: EpisodeCardProps) {
@@ -36,6 +44,9 @@ export const EpisodeCard = React.memo(function EpisodeCard(props: EpisodeCardPro
         disabled,
         thumbnailOverlay,
         animeTitle,
+        onFocus: externalOnFocus,
+        onBlur: externalOnBlur,
+        nextFocusLeft,
     } = props
 
     const [isFocused, setIsFocused] = React.useState(false)
@@ -70,10 +81,11 @@ export const EpisodeCard = React.memo(function EpisodeCard(props: EpisodeCardPro
             onPress={disabled ? undefined : onPress}
             disabled={disabled || !onPress}
             focusable={isTV}
-            onFocus={isTV ? handleFocus : undefined}
-            onBlur={isTV ? handleBlur : undefined}
+            onFocus={isTV ? ((e: any) => { handleFocus(); externalOnFocus?.(e) }) : externalOnFocus}
+            onBlur={isTV ? ((e: any) => { handleBlur(); externalOnBlur?.(e) }) : externalOnBlur}
             onPressIn={handlePressIn}
             onPressOut={handlePressOut}
+            {...(nextFocusLeft !== undefined ? { nextFocusLeft } : {})}
         >
             <Animated.View style={[{ width: cardWidth }, animatedStyle]}>
                 <View

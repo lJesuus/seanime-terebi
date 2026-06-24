@@ -34,15 +34,15 @@ export function AnimeEntryViewSwitcher({ currentView, onViewChange, isOffline, h
 
     if (isTV) {
         return (
-            <View className="w-full border-b border-white/10 bg-background px-4 py-1">
-                <View className="flex-row gap-1 justify-center">
+            <View className="w-full bg-background px-4 py-2">
+                <View className="flex-row gap-2 justify-center">
                     {visibleItems.map((item, idx) => {
                         const disabled = isOffline && OFFLINE_DISABLED_VIEWS.has(item.view)
                         return (
                             <TvFocusablePressable
                                 key={item.view}
                                 className={cn(
-                                    "flex-row items-center justify-center px-3 py-2 rounded-lg gap-2",
+                                    "flex-row items-center justify-center h-11 px-4 rounded-md gap-2",
                                     currentView === item.view ? "bg-brand-500/20" : "",
                                 )}
                                 focusedClassName="bg-white/10 border border-brand-400/60"
@@ -73,8 +73,8 @@ export function AnimeEntryViewSwitcher({ currentView, onViewChange, isOffline, h
     }
 
     return (
-        <View className="w-full border-b border-white/10 bg-background">
-            <View className="flex-row px-3">
+        <View className="w-full bg-background">
+            <View className="flex-row gap-1 px-3">
                 {visibleItems.map((item) => {
                     const disabled = isOffline && OFFLINE_DISABLED_VIEWS.has(item.view)
                     return (
