@@ -1,8 +1,8 @@
-import { HibikeManga_ChapterDetails, Manga_EntryListData } from "@/api/generated/types"
-import { useEmptyMangaEntryCache } from "@/api/hooks/manga.hooks"
+import { HibikeManga_ChapterDetails, HibikeManga_SearchResult, Manga_EntryListData } from "@/api/generated/types"
+import { useEmptyMangaEntryCache, useGetMangaMapping, useMangaManualMapping, useMangaManualSearch, useRemoveMangaMapping } from "@/api/hooks/manga.hooks"
 import { formatMangaReaderHref, getChapterDecimal } from "@/components/features/manga/reader/manga-reader-utils"
 import { CenteredSpinner } from "@/components/shared/centered-spinner"
-import { LabeledSwitch } from "@/components/shared/labeled-switch"
+import { TvFocusablePressable } from "@/components/ui/tv-focusable"
 import { LuffyError } from "@/components/shared/luffy-error"
 import { NativeSelect } from "@/components/shared/native-select"
 import { Surface } from "@/components/shared/surface"
@@ -10,11 +10,11 @@ import { FormSectionLabel } from "@/components/ui/form-field"
 import { useHandleMangaChapters } from "@/hooks/use-manga-chapters"
 import { useCompletedMangaChapters, useIsMangaChapterDownloaded, useMangaChapterDownloadInfo } from "@/lib/downloads/use-manga-downloads"
 import { cn } from "@/lib/utils"
+import { useIsTV } from "@/hooks/use-device"
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { useRouter } from "expo-router"
 import * as React from "react"
-import { ActivityIndicator, Pressable, Text, View } from "react-native"
-import { MangaManualMatchModal } from "./manga-manual-match-modal"
+import { ActivityIndicator, findNodeHandle, Pressable, Text, TextInput, View } from "react-native"
 import { MangaPaginationControls } from "./manga-pagination-controls"
 
 const PAGE_SIZE = 30
@@ -89,6 +89,46 @@ export function MangaEntryChaptersView({
 
     const { mutate: emptyCache, isPending: isEmptyingCache } = useEmptyMangaEntryCache()
     const [manualMatchOpen, setManualMatchOpen] = React.useState(false)
+    const isTV = useIsTV()
+    const searchTriggerRef = React.useRef<React.ComponentRef<typeof Pressable>>(null)
+    const [query, setQuery] = React.useState(mediaTitle)
+
+    const { data: currentMapping } = useGetMangaMapping({ provider: selectedProvider ?? undefined, mediaId })
+    const { mutate: search, data: searchResults, isPending: isSearching } = useMangaManualSearch(mediaId, selectedProvider)
+    const { mutate: mapManga, isPending: isMapping } = useMangaManualMapping()
+    const { mutate: removeMapping, isPending: isRemoving } = useRemoveMangaMapping()
+
+    React.useEffect(() => {
+        if (manualMatchOpen) setQuery(mediaTitle)
+    }, [manualMatchOpen, mediaTitle])
+
+    const closeManualMatch = React.useCallback(() => {
+        setManualMatchOpen(false)
+        if (isTV) {
+            setTimeout(() => searchTriggerRef.current?.focus(), 16)
+        }
+    }, [isTV])
+
+    const handleSearch = React.useCallback(() => {
+        if (!query.trim() || !selectedProvider) return
+        search({ provider: selectedProvider, query: query.trim() })
+    }, [query, selectedProvider, search])
+
+    const handleSelectResult = React.useCallback((result: HibikeManga_SearchResult) => {
+        if (!selectedProvider) return
+        mapManga(
+            { provider: selectedProvider, mediaId, mangaId: result.id },
+            { onSuccess: closeManualMatch },
+        )
+    }, [selectedProvider, mediaId, mapManga, closeManualMatch])
+
+    const handleRemoveMapping = React.useCallback(() => {
+        if (!selectedProvider) return
+        removeMapping(
+            { provider: selectedProvider, mediaId },
+            { onSuccess: closeManualMatch },
+        )
+    }, [selectedProvider, mediaId, removeMapping, closeManualMatch])
 
     const chapters = chapterContainer?.chapters ?? []
     const progress = listData?.progress ?? 0
@@ -124,6 +164,76 @@ export function MangaEntryChaptersView({
     const completedChapters = useCompletedMangaChapters(mediaId, selectedProvider)
     const downloadedCount = completedChapters.length
 
+    // Resolve native tags for hidden page-navigation triggers placed at the
+    // left / right edges of the chapter list. The first chapter item gets
+    // `nextFocusLeft` pointing to the prev-page trigger; the last item gets
+    // `nextFocusRight` pointing to the next-page trigger. LEFT/RIGHT from
+    // those items lands on the invisible 1×1 trigger, which changes the page
+    // and bounces focus back to the list.
+    //
+    // These hooks MUST stay above the early returns below — moving them past
+    // `if (providerExtensionsLoading)` makes React throw "Rendered more
+    // hooks than during the previous render" once providers finish loading.
+    const prevPageTriggerRef = React.useRef<number | null>(null)
+    const nextPageTriggerRef = React.useRef<number | null>(null)
+    const chapterItemRefs = React.useRef<Array<React.ComponentRef<typeof Pressable> | null>>([])
+    const didMountForFocusRef = React.useRef(true)
+
+    const prevPageTriggerCallbackRef = React.useCallback(
+        (instance: React.ComponentRef<typeof Pressable> | null) => {
+            if (instance) {
+                const tag = findNodeHandle(instance)
+                if (tag !== null) prevPageTriggerRef.current = tag
+            } else {
+                prevPageTriggerRef.current = null
+            }
+        },
+        [],
+    )
+    const nextPageTriggerCallbackRef = React.useCallback(
+        (instance: React.ComponentRef<typeof Pressable> | null) => {
+            if (instance) {
+                const tag = findNodeHandle(instance)
+                if (tag !== null) nextPageTriggerRef.current = tag
+            } else {
+                nextPageTriggerRef.current = null
+            }
+        },
+        [],
+    )
+
+    const handlePrevPageFocus = React.useCallback(() => {
+        if (page === 0) return
+        setPage(page - 1)
+    }, [page])
+
+    const handleNextPageFocus = React.useCallback(() => {
+        if (page >= totalPages - 1) return
+        setPage(page + 1)
+    }, [page, totalPages])
+
+    // After page changes, bounce focus to the first chapter of the new
+    // page so the user never lands on a vanished element. Double rAF ensures
+    // the new items have mounted and their refs are populated. Skipped on
+    // initial mount to avoid stealing focus from the provider pills above.
+    React.useEffect(() => {
+        if (didMountForFocusRef.current) {
+            didMountForFocusRef.current = false
+            return
+        }
+        if (totalPages <= 1) return
+        let innerRaf = 0
+        const raf = requestAnimationFrame(() => {
+            innerRaf = requestAnimationFrame(() => {
+                chapterItemRefs.current[0]?.focus()
+            })
+        })
+        return () => {
+            cancelAnimationFrame(raf)
+            if (innerRaf) cancelAnimationFrame(innerRaf)
+        }
+    }, [page, totalPages])
+
     if (providerExtensionsLoading) {
         return <CenteredSpinner />
     }
@@ -143,13 +253,32 @@ export function MangaEntryChaptersView({
                 <Surface variant="muted" className="p-3.5 gap-4">
                     <View className="gap-2">
                         <FormSectionLabel>Source</FormSectionLabel>
-                        <NativeSelect
-                            options={providerOptions.map(o => ({ id: o.value, label: o.label }))}
-                            selectedId={selectedProvider ?? ""}
-                            onSelect={(id) => setSelectedProvider({ mId: mediaId, provider: id })}
-                            title="Select Source"
-                            placeholder="Select provider"
-                        />
+                        <View className="flex-row flex-wrap gap-2">
+                            {providerOptions.map(opt => {
+                                const selected = selectedProvider === opt.value
+                                return (
+                                    <TvFocusablePressable
+                                        key={opt.value}
+                                        hasTVPreferredFocus={selected}
+                                        focusedClassName="border-white/60"
+                                        onPress={() => setSelectedProvider({ mId: mediaId, provider: opt.value })}
+                                        className={cn(
+                                            "h-11 flex-row items-center justify-center gap-2 rounded-md border px-5",
+                                            selected
+                                                ? "border-brand-300 bg-brand-300/15"
+                                                : "border-white/10 bg-white/[0.04]",
+                                        )}
+                                    >
+                                        <Text className={cn(
+                                            "text-sm font-semibold",
+                                            selected ? "text-brand-300" : "text-white/70",
+                                        )}>
+                                            {opt.label}
+                                        </Text>
+                                    </TvFocusablePressable>
+                                )
+                            })}
+                        </View>
                     </View>
 
                     {(scanlatorOptions.length > 0 || languageOptions.length > 0) && (
@@ -182,37 +311,150 @@ export function MangaEntryChaptersView({
                         </View>
                     )}
 
-                    <View className="items-center gap-4">
-                        <LabeledSwitch
-                            label="Unread only"
-                            helper="Show only chapters that you haven't read"
-                            checked={unreadOnly}
-                            onToggle={() => setUnreadOnly(current => !current)}
-                        />
+                    <View className="flex-row gap-2">
+                        <TvFocusablePressable
+                            onPress={() => setUnreadOnly(current => !current)}
+                            focusedClassName="border-white/60"
+                            className={cn(
+                                "h-9 flex-1 flex-row items-center justify-center gap-1.5 rounded-full border px-3.5",
+                                unreadOnly
+                                    ? "border-brand-300 bg-brand-300/15"
+                                    : "border-white/10 bg-white/[0.04]",
+                            )}
+                        >
+                            <Text className={cn(
+                                "text-sm",
+                                unreadOnly ? "font-semibold text-brand-300" : "font-medium text-foreground/70",
+                            )} numberOfLines={1}>Unread only</Text>
+                        </TvFocusablePressable>
 
-                        <View className="flex-row gap-2">
-                            <Pressable
-                                onPress={() => setManualMatchOpen(true)}
-                                className="h-9 w-9 items-center justify-center rounded-full bg-white/[0.04] border border-white/10 active:bg-white/10"
-                            >
-                                <Ionicons name="search-outline" size={16} color="rgba(255,255,255,0.6)" />
-                            </Pressable>
+                        <TvFocusablePressable
+                            ref={searchTriggerRef}
+                            onPress={() => setManualMatchOpen(prev => !prev)}
+                            focusedClassName="border-white/60"
+                            className="h-9 flex-1 flex-row items-center justify-center gap-1.5 rounded-full border border-white/10 px-3.5 bg-white/[0.04]"
+                        >
+                            <Text className="text-sm font-medium text-foreground/70" numberOfLines={1}>Manual Match</Text>
+                        </TvFocusablePressable>
 
-                            <Pressable
-                                onPress={() => emptyCache({ mediaId })}
-                                disabled={isEmptyingCache}
-                                className="h-9 w-9 items-center justify-center rounded-full bg-white/[0.04] border border-white/10 active:bg-white/10"
-                            >
-                                {isEmptyingCache ? (
-                                    <ActivityIndicator size="small" color="rgba(255,255,255,0.5)" />
-                                ) : (
-                                    <Ionicons name="refresh-outline" size={16} color="rgba(255,255,255,0.6)" />
-                                )}
-                            </Pressable>
-                        </View>
+                        <TvFocusablePressable
+                            onPress={() => emptyCache({ mediaId })}
+                            disabled={isEmptyingCache}
+                            focusedClassName="border-white/60"
+                            className="h-9 flex-1 flex-row items-center justify-center gap-1.5 rounded-full border border-white/10 px-3.5 bg-white/[0.04]"
+                        >
+                            {isEmptyingCache ? (
+                                <ActivityIndicator size="small" color="rgba(255,255,255,0.5)" />
+                            ) : (
+                                <Text className="text-sm font-medium text-foreground/70" numberOfLines={1}>Refresh Chapters</Text>
+                            )}
+                        </TvFocusablePressable>
                     </View>
                 </Surface>
             </View>
+
+            {/* Render the Manual Match inline box right under the controls
+                row (where the user just pressed the button), instead of at
+                the bottom of the page where it falls off-screen on TV. The
+                Online Steam section places it the same way. */}
+            {manualMatchOpen && (
+                <View className="px-4 mb-5">
+                    <View className="bg-card/30 border border-border/50 rounded-2xl p-4 gap-3">
+                        <View className="flex-row items-center gap-2">
+                            <Text className="text-lg font-bold text-foreground flex-1">Manual Match</Text>
+                        </View>
+
+                        <View className="flex-row gap-2">
+                            <View className="flex-1 h-11 bg-card/30 border border-border/50 rounded-xl px-3 flex-row items-center">
+                                <Ionicons name="search" size={16} color="rgba(255,255,255,0.4)" />
+                                <TextInput
+                                    value={query}
+                                    onChangeText={setQuery}
+                                    onSubmitEditing={handleSearch}
+                                    returnKeyType="search"
+                                    placeholder="Search title..."
+                                    placeholderTextColor="rgba(255,255,255,0.3)"
+                                    className="ml-2 flex-1 text-sm text-white"
+                                    autoCapitalize="none"
+                                />
+                            </View>
+                            <Pressable
+                                onPress={handleSearch}
+                                disabled={isSearching || !query.trim() || !selectedProvider}
+                                focusable={isTV}
+                                className={cn(
+                                    "h-11 px-4 items-center justify-center rounded-xl",
+                                    isSearching || !query.trim() || !selectedProvider
+                                        ? "bg-card/30 border border-border/50"
+                                        : "bg-primary active:opacity-80",
+                                )}
+                            >
+                                {isSearching ? (
+                                    <ActivityIndicator size="small" color="white" />
+                                ) : (
+                                    <Text className="text-sm font-medium text-primary-foreground">Search</Text>
+                                )}
+                            </Pressable>
+                        </View>
+
+                        {currentMapping?.mangaId && (
+                            <View className="bg-brand-300/10 border border-brand-300/20 rounded-xl px-3 py-2">
+                                <Text className="text-xs text-brand-300">
+                                    Currently mapped to: {currentMapping.mangaId}
+                                </Text>
+                            </View>
+                        )}
+
+                        {searchResults && searchResults.length === 0 && (
+                            <View className="py-8 items-center">
+                                <Text className="text-white/40 text-sm">No results found</Text>
+                            </View>
+                        )}
+
+                        {searchResults && searchResults.map((result, index) => (
+                            <Pressable
+                                key={`${result.id}-${index}`}
+                                onPress={() => handleSelectResult(result)}
+                                disabled={isMapping}
+                                focusable={isTV}
+                                className={cn(
+                                    "px-4 py-3.5 bg-card/30 border-x border-border/50 active:bg-white/10",
+                                    index === 0 && "rounded-t-2xl border-t",
+                                    index === searchResults.length - 1 && "rounded-b-2xl border-b",
+                                    index < searchResults.length - 1 && "border-b border-b-border/30",
+                                )}
+                            >
+                                <Text className="text-sm font-medium text-foreground" numberOfLines={2}>
+                                    {result.title}
+                                </Text>
+                                {!!result.year && (
+                                    <Text className="text-xs text-white/40 mt-1">{result.year}</Text>
+                                )}
+                            </Pressable>
+                        ))}
+
+                        {currentMapping?.mangaId && (
+                            <Pressable
+                                onPress={handleRemoveMapping}
+                                disabled={isRemoving}
+                                focusable={isTV}
+                                className={cn(
+                                    "h-11 mt-1 items-center justify-center rounded-xl border",
+                                    isRemoving
+                                        ? "border-red-500/20 bg-red-500/[0.02]"
+                                        : "border-red-500/30 bg-red-500/[0.04] active:bg-red-500/[0.08]",
+                                )}
+                            >
+                                {isRemoving ? (
+                                    <ActivityIndicator size="small" color="#ef4444" />
+                                ) : (
+                                    <Text className="text-sm font-medium text-red-400">Remove mapping</Text>
+                                )}
+                            </Pressable>
+                        )}
+                    </View>
+                </View>
+            )}
 
             {!chapterContainerLoading && chapters.length > 0 && (
                 <View className="flex-row items-center justify-between px-4 mb-3">
@@ -265,9 +507,32 @@ export function MangaEntryChaptersView({
                 <View className="px-4">
                     <Text className="text-xl font-bold text-foreground mb-4">Chapters</Text>
                     <Surface className="overflow-hidden">
+                        {/* Invisible page-navigation triggers at the edges of
+                            the chapter list. LEFT on the first chapter item
+                            lands here (prev page); RIGHT on the last item
+                            lands here (next page). Focus bounces back to the
+                            first chapter of the new page after 100ms. */}
+                        <TvFocusablePressable
+                            ref={prevPageTriggerCallbackRef}
+                            onFocus={handlePrevPageFocus}
+                            noScale
+                            style={{ position: "absolute", left: 0, top: 0, width: 1, height: 1, opacity: 0.01 }}
+                        >
+                            <View />
+                        </TvFocusablePressable>
+                        <TvFocusablePressable
+                            ref={nextPageTriggerCallbackRef}
+                            onFocus={handleNextPageFocus}
+                            noScale
+                            style={{ position: "absolute", right: 0, top: 0, width: 1, height: 1, opacity: 0.01 }}
+                        >
+                            <View />
+                        </TvFocusablePressable>
+
                         {pagedChapters.map((item, index) => (
                             <ChapterListItem
                                 key={item.id}
+                                ref={(el) => { chapterItemRefs.current[index] = el }}
                                 chapter={item}
                                 mediaId={mediaId}
                                 provider={item.provider || selectedProvider}
@@ -288,6 +553,8 @@ export function MangaEntryChaptersView({
                                         chapterNumber: item.chapter,
                                     }))
                                 }}
+                                nextFocusLeft={index === 0 ? (prevPageTriggerRef.current ?? undefined) : undefined}
+                                nextFocusRight={index === pagedChapters.length - 1 ? (nextPageTriggerRef.current ?? undefined) : undefined}
                             />
                         ))}
                     </Surface>
@@ -299,14 +566,6 @@ export function MangaEntryChaptersView({
                     <MangaPaginationControls page={page} totalPages={totalPages} onPageChange={setPage} />
                 </View>
             )}
-
-            <MangaManualMatchModal
-                open={manualMatchOpen}
-                onOpenChange={setManualMatchOpen}
-                mediaId={mediaId}
-                provider={selectedProvider}
-                mediaTitle={mediaTitle}
-            />
         </>
     )
 }
@@ -324,9 +583,13 @@ type ChapterListItemProps = {
     selected: boolean
     onToggle: () => void
     onReadChapter: () => void
+    /** Native tag of the hidden prev-page trigger. Set on the first item. */
+    nextFocusLeft?: number
+    /** Native tag of the hidden next-page trigger. Set on the last item. */
+    nextFocusRight?: number
 }
 
-function ChapterListItem({
+const ChapterListItem = React.forwardRef<React.ComponentRef<typeof Pressable>, ChapterListItemProps>(function ChapterListItem({
     chapter,
     mediaId,
     provider,
@@ -337,21 +600,30 @@ function ChapterListItem({
     selected,
     onToggle,
     onReadChapter,
-}: ChapterListItemProps) {
+    nextFocusLeft,
+    nextFocusRight,
+}, ref) {
     const isRead = !isChapterUnread(chapter, progress)
     const isDownloaded = useIsMangaChapterDownloaded(mediaId, provider, chapter.id)
     const downloadInfo = useMangaChapterDownloadInfo(mediaId, provider, chapter.id)
     const isActivelyDownloading = downloadInfo?.status === "downloading"
     const isPending = downloadInfo?.status === "pending"
+    const [isFocused, setIsFocused] = React.useState(false)
 
     return (
         <Pressable
+            ref={ref}
             onPress={selectionMode ? onToggle : onReadChapter}
             onLongPress={!selectionMode ? onToggle : undefined}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
+            focusable={true}
+            {...{ nextFocusLeft, nextFocusRight } as any}
             className={cn(
-                "flex-row items-center gap-3 px-4 py-3.5",
+                "flex-row items-center gap-3 px-4 py-3.5 border border-transparent",
                 !isLast && "border-b border-white/[0.05]",
                 selectionMode && selected && "bg-brand-300/[0.08]",
+                isFocused && "border-white/60 bg-white/[0.05]",
             )}
         >
             {selectionMode && (
@@ -430,4 +702,4 @@ function ChapterListItem({
             </View>
         </Pressable>
     )
-}
+})

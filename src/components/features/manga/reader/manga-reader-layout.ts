@@ -17,25 +17,46 @@ export function getReaderImageSize({
     screenWidth,
     screenHeight,
     mode,
+    fitToWidth = true,
 }: {
     aspectRatio: number
     screenWidth: number
     screenHeight: number
+    /**
+     * "vertical" = LONG_STRIP / webtoon reader; "horizontal" = bound-to-viewport page.
+     * Optional, defaults to "vertical".
+     */
     mode?: "vertical" | "horizontal"
+    /**
+     * Only meaningful in `vertical` mode. When true (default) the page
+     * stretches to fill the screen width so every column is readable at
+     * TV-distance — the page may overflow top/bottom and require scrolling,
+     * which is the desired long-strip behaviour.
+     *
+     * When false, the page scales into a contain-in-screenHeight box: the
+     * entire page is visible at once, narrower than the screen and centred.
+     * Useful for letterboxing printed pages that aren't tall enough to be
+     * worth scrolling.
+     */
+    fitToWidth?: boolean
 }) {
     const boundedWidth = Math.max(1, screenWidth)
     const boundedHeight = Math.max(1, screenHeight)
     const boundedAspectRatio = Number.isFinite(aspectRatio) && aspectRatio > 0 ? aspectRatio : DEFAULT_READER_PAGE_ASPECT_RATIO
 
-    // long strip pages grow vertically
-    if (mode === "vertical") {
+    // Long strip ("vertical") pages. Fit-to-width is the default for TV so
+    // each column is large enough to read at distance; the alternative
+    // falls through to the contain-in-viewport logic below so the page is
+    // fully visible without scrolling.
+    if (mode === "vertical" && fitToWidth) {
         return {
             width: boundedWidth,
             height: boundedWidth / boundedAspectRatio,
         }
     }
 
-    // bound page modes so swiping feels isn't jumpy
+    // binding the page to the viewport (or fitToWidth=false on vertical):
+    // whichever dimension hits first wins so the page never overflows.
     const widthLimitedHeight = boundedWidth / boundedAspectRatio
 
     if (widthLimitedHeight <= boundedHeight) {

@@ -3,29 +3,33 @@ import { useAtom } from "jotai/react"
 import { atomWithStorage } from "jotai/utils"
 import * as React from "react"
 
-export const MANGA_READING_MODE = {
-    LONG_STRIP: "long-strip",
-    PAGED: "paged",
-    DOUBLE_PAGE: "double-page",
-} as const
-
 export const MANGA_READING_DIRECTION = {
     LTR: "ltr",
     RTL: "rtl",
 } as const
 
-export type MangaReadingMode = typeof MANGA_READING_MODE[keyof typeof MANGA_READING_MODE]
 export type MangaReadingDirection = typeof MANGA_READING_DIRECTION[keyof typeof MANGA_READING_DIRECTION]
 
+export const MANGA_READING_MODE = {
+    LONG_STRIP: "longStrip",
+    DOUBLE_PAGE: "doublePage",
+} as const
+
+export type MangaReadingMode = typeof MANGA_READING_MODE[keyof typeof MANGA_READING_MODE]
+
+// TV-only reader settings. The previous `zoomLevel` field is gone —
+// per-page image sizing is fully driven by the layout helper and the
+// Fit-to-Width toggle. Stored payloads from older sessions that still
+// mention that key are silently dropped on merge: the spread
+// `{ ...defaults, ...store[mediaKey] }` only fills in keys that exist
+// on `MangaReaderSettings`, so unknown keys are quietly ignored.
 export type MangaReaderSettings = {
-    readingMode: MangaReadingMode
     readingDirection: MangaReadingDirection
+    readingMode: MangaReadingMode
     pageGap: boolean
     pageGapAmount: number
     pageGapShadow: boolean
     showProgressBar: boolean
-    doublePageOffset: number
-    zoomLevel: number
     brightness: number
     fitToWidth: boolean
 }
@@ -43,48 +47,29 @@ const mangaReaderSettingsAtom = atomWithStorage<Record<string, Partial<MangaRead
 )
 
 const mangaReaderPositionsAtom = atomWithStorage<Record<string, MangaReaderPosition>>(
-    "sea-mobile-manga-reader-positions",
+    "sea-mobile-manga-positions",
     {},
     createAtomStorage<Record<string, MangaReaderPosition>>(),
     { getOnInit: true },
 )
 
-export function getDefaultMangaReaderSettings(isCompact: boolean): MangaReaderSettings {
-    if (isCompact) {
-        return {
-            readingMode: MANGA_READING_MODE.LONG_STRIP,
-            readingDirection: MANGA_READING_DIRECTION.RTL,
-            pageGap: true,
-            pageGapAmount: 10,
-            pageGapShadow: true,
-            showProgressBar: true,
-            doublePageOffset: 0,
-            zoomLevel: 1,
-            brightness: 1,
-            fitToWidth: true,
-        }
-    }
-
+export function getDefaultMangaReaderSettings(): MangaReaderSettings {
     return {
-        readingMode: MANGA_READING_MODE.LONG_STRIP,
         readingDirection: MANGA_READING_DIRECTION.RTL,
+        readingMode: MANGA_READING_MODE.LONG_STRIP,
         pageGap: true,
         pageGapAmount: 10,
         pageGapShadow: true,
         showProgressBar: true,
-        doublePageOffset: 0,
-        zoomLevel: 1,
         brightness: 1,
         fitToWidth: true,
     }
 }
 
-export function useMangaReaderSettings(mediaId: number | undefined, isCompact: boolean) {
+export function useMangaReaderSettings(mediaId: number | undefined) {
     const [store, setStore] = useAtom(mangaReaderSettingsAtom)
-
     const mediaKey = String(mediaId ?? "")
-
-    const defaults = React.useMemo(() => getDefaultMangaReaderSettings(isCompact), [isCompact])
+    const defaults = React.useMemo(() => getDefaultMangaReaderSettings(), [])
 
     const settings = React.useMemo<MangaReaderSettings>(() => {
         if (!mediaId) return defaults

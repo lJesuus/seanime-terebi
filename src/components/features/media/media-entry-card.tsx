@@ -200,7 +200,17 @@ type MediaEntryCardProps<T extends "anime" | "manga"> = {
     hideLibraryBadge?: boolean
 }
 
-export function MediaEntryCard<T extends "anime" | "manga">(props: MediaEntryCardProps<T> & Record<string, any>) {
+// `React.forwardRef` is used so a parent can capture the underlying
+// `<Pressable>` nodeHandle, e.g. to seed the Discover carousel's
+// `nextFocusDown` with the first card's tag. The generic per-call-site
+// narrowing from the old `<T extends "anime" | "manga">` version is
+// preserved at call sites via the props type alias below — the union
+// type used by `forwardRef` is widened to `"anime" | "manga"` because
+// `forwardRef` cannot carry a per-call generic parameter.
+export const MediaEntryCard = React.forwardRef<
+    React.ComponentRef<typeof Pressable>,
+    MediaEntryCardProps<"anime" | "manga"> & Record<string, any>
+>(function MediaEntryCardImpl(props, ref) {
 
     const {
         type,
@@ -218,7 +228,7 @@ export function MediaEntryCard<T extends "anime" | "manga">(props: MediaEntryCar
         preferFetchedSheetMedia,
         hideLibraryBadge,
         ...rest
-    } = props
+    } = props as MediaEntryCardProps<"anime" | "manga"> & Record<string, any>
 
     const serverStatus = useServerStatus()
     const [sheetOpen, setSheetOpen] = React.useState(false)
@@ -283,6 +293,10 @@ export function MediaEntryCard<T extends "anime" | "manga">(props: MediaEntryCar
                 onFocus={(e) => { onFocus(); _onFocus?.(e) }}
                 onBlur={(e) => { onBlur(); _onBlur?.(e) }}
                 {...pressableRest}
+                // `ref` is forwarded by `React.forwardRef`; placed after
+                // the spread so callers that somehow pass `ref` via `rest`
+                // cannot clobber our external ref.
+                ref={ref}
             >
                 <Animated.View
                     className="flex flex-col relative mb-2"
@@ -298,7 +312,7 @@ export function MediaEntryCard<T extends "anime" | "manga">(props: MediaEntryCar
                     <View
                         className={cn(
                             "relative mb-2 w-full overflow-hidden rounded-xl border-2",
-                            isFocused ? "border-brand-400/80 shadow-2xl" : "border-transparent"
+                            isFocused ? "border-white/60 shadow-2xl" : "border-transparent"
                         )}
                         style={{ height: posterHeight }}
                     >
@@ -370,4 +384,4 @@ export function MediaEntryCard<T extends "anime" | "manga">(props: MediaEntryCar
             ) : null}
         </>
     )
-}
+})

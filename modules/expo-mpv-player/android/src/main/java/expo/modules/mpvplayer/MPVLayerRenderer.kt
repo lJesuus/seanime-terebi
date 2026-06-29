@@ -87,14 +87,23 @@ class MPVLayerRenderer(private val context: Context) : MPVLib.EventObserver {
             return
         }
 
-        // video output
-        trySetOption("vo", "gpu")
+        // ── gpu-next (libplacebo) with optimisations for low-end GPUs ──
+        // Uses libplacebo rendering via OpenGL ES (Vulkan not compiled in
+        // this mpv build). libplacebo is more efficient than the legacy
+        // vo=gpu renderer, especially on PowerVR GPUs. Scalers locked to
+        // bilinear for max performance on BXE-4-32 (~32 GFLOPS).
+        //
+        // Fallback if subs/UI aren't needed (best fps):
+        //   trySetOption("vo", "mediacodec_embed")
+        //   trySetOption("hwdec", "mediacodec")
+        trySetOption("vo", "gpu-next")
         trySetOption("gpu-context", "android")
-        trySetOption("cscale", "mitchell")
-
-        // hardware decoding
         trySetOption("hwdec", "mediacodec-copy")
         trySetOption("hwdec-codecs", "h264,hevc,mpeg4,mpeg2video,vp8,vp9,av1")
+        trySetOption("scale", "bilinear")
+        trySetOption("cscale", "bilinear")
+        trySetOption("dscale", "bilinear")
+        trySetOption("correct-downscaling", "no")
 
         // cache & demuxer
         trySetOption("cache", "yes")
@@ -111,7 +120,7 @@ class MPVLayerRenderer(private val context: Context) : MPVLib.EventObserver {
         trySetOption("hr-seek", "yes")
         trySetOption("hr-seek-framedrop", "yes")
 
-        // subtitles
+        // subtitles — full ASS styling supported with vo=gpu-next
         trySetOption("sub-scale-with-window", "no")
         trySetOption("sub-use-margins", "no")
         trySetOption("subs-match-os-language", "yes")
@@ -132,9 +141,11 @@ class MPVLayerRenderer(private val context: Context) : MPVLib.EventObserver {
         trySetOption("keepaspect", "yes")
         trySetOption("video-zoom", "0")
 
-        // debug logging
-        trySetOption("log-file", "/data/data/app.seanime.tenji/cache/mpv.log")
-        trySetOption("msg-level", "all=v")
+        // debug logging (disabled for production — verbose logging to disk
+        // causes I/O contention on low-end devices, dropping frames)
+        // Uncomment for debugging:
+        // trySetOption("log-file", "/data/data/app.seanime.tenji/cache/mpv.log")
+        // trySetOption("msg-level", "all=v")
 
         // start paused
         trySetOption("pause", "yes")

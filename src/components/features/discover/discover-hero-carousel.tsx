@@ -24,7 +24,7 @@ import Animated, {
 import type { AnimatedRef } from "react-native-reanimated"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 
-export const HERO_HEIGHT = 480
+export const HERO_HEIGHT = 320
 const HERO_TITLE_FONT_SIZE = 44
 const HERO_GENRE_FONT_SIZE = 16
 const AUTO_ROTATE_INTERVAL = 10000
@@ -89,7 +89,13 @@ type DiscoverHeroCarouselInteractionLayerProps = {
     media: DiscoverHeroItem[]
     type: "anime" | "manga"
     controller: DiscoverHeroCarouselController
-    onCarouselFocus?: () => void
+    /** FlatList scroll offset so the backdrop fades as the user
+     * scrolls down into the section cards. */
+    scrollY?: SharedValue<number>
+    /** Fires when a carousel item receives focus (DPAD from pills). */
+    onFocus?: () => void
+    /** Fires when a carousel item loses focus (DPAD-DOWN to cards). */
+    onBlur?: () => void
 }
 
 export function useDiscoverHeroItems(media: DiscoverHeroItem[]) {
@@ -436,30 +442,18 @@ function DiscoverHeroItem({
     type,
     width,
     height,
-    index,
-    onFocus: onFocusProp,
-    onBlur: onBlurProp,
+    onFocus,
+    onBlur,
 }: {
     item: DiscoverHeroItem
     type: "anime" | "manga"
     width: number
     height: number
-    index: number
     onFocus?: () => void
     onBlur?: () => void
 }) {
     const isTV = useIsTV()
     const serverStatus = useServerStatus()
-    const [isFocused, setIsFocused] = React.useState(false)
-    const scale = useSharedValue(1)
-
-    React.useEffect(() => {
-        scale.set(withTiming(isFocused ? 1.03 : 1, { duration: 200 }))
-    }, [isFocused, scale])
-
-    const animatedStyle = useAnimatedStyle(() => ({
-        transform: [{ scale: scale.value }],
-    }))
 
     const title = item.title?.userPreferred || item.title?.english || item.title?.romaji || ""
     const genres = item.genres?.slice(0, 3) ?? []
@@ -477,15 +471,14 @@ function DiscoverHeroItem({
         <View style={{ width, height }}>
             <Pressable
                 style={{ flex: 1 }}
-                focusable={isTV}
-                onFocus={() => {
-                    setIsFocused(true)
-                    onFocusProp?.()
-                }}
-                onBlur={() => {
-                    setIsFocused(false)
-                    onBlurProp?.()
-                }}
+                // Carousel items are focusable on TV so the user
+                // can navigate DOWN from an item into the section
+                // cards. When the item loses focus (onBlur), the
+                // parent hides the hero carousel to prevent LEFT
+                // focus theft from the cards.
+                focusable={isTV ? true : undefined}
+                onFocus={onFocus}
+                onBlur={onBlur}
                 onPress={() => {
                     if (type === "anime") {
                         router.push(`/(app)/entry/anime/${item.id}`)
@@ -496,7 +489,6 @@ function DiscoverHeroItem({
             >
                 <Animated.View
                     className={"flex-1"}
-                    style={isTV ? animatedStyle : undefined}
                 />
             </Pressable>
 
@@ -581,41 +573,33 @@ function stripHtml(value?: string) {
         .trim()
 }
 
-export function DiscoverHeroCarouselInteractionLayer({ media, type, controller, onCarouselFocus }: DiscoverHeroCarouselInteractionLayerProps) {
+export function DiscoverHeroCarouselInteractionLayer({ media, type, controller, scrollY, onFocus, onBlur }: DiscoverHeroCarouselInteractionLayerProps) {
     const isTV = useIsTV()
     const handleHorizontalScroll = useAnimatedScrollHandler({
         onScroll: event => {
             controller.scrollX.value = event.contentOffset.x
         },
     })
-    const carouselBlurTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
-    const carouselWasFocusedRef = React.useRef(false)
-
-    const handleCarouselChildFocus = React.useCallback((index: number) => {
-        if (carouselBlurTimer.current) {
-            clearTimeout(carouselBlurTimer.current)
-            carouselBlurTimer.current = null
-        }
-        controller.scrollToIndex(index)
-        controller.notifyFocusEnter()
-        if (!carouselWasFocusedRef.current) {
-            carouselWasFocusedRef.current = true
-            onCarouselFocus?.()
-        }
-    }, [controller, onCarouselFocus])
-
-    const handleCarouselChildBlur = React.useCallback(() => {
-        carouselBlurTimer.current = setTimeout(() => {
-            carouselWasFocusedRef.current = false
-            controller.notifyFocusExit()
-        }, 50)
-    }, [controller])
 
     if (media.length === 0) return null
 
     return (
         <View style={{ height: HERO_HEIGHT }}>
+            <DiscoverHeroCarouselBackdrop
+                media={media}
+                currentIndex={controller.currentIndex}
+                screenWidth={controller.screenWidth}
+                scrollX={controller.scrollX}
+                scrollY={scrollY}
+            />
             <Animated.ScrollView
+                // The outer horizontal pager must NOT be focusable or
+                // it becomes its own focus region on Android TV and
+                // swallows DPAD-DOWN / DPAD-UP. Carousel items themselves
+                // are also non-focusable on TV (see `DiscoverHeroItem`)
+                // — the hero carousel is purely decorative, matching
+                // the Library tab pattern.
+                focusable={false}
                 ref={controller.scrollRef}
                 horizontal
                 pagingEnabled
@@ -628,16 +612,21 @@ export function DiscoverHeroCarouselInteractionLayer({ media, type, controller, 
                 onScrollBeginDrag={controller.handleScrollBeginDrag}
                 onMomentumScrollEnd={controller.handleScrollEnd}
             >
-                {media.map((item, index) => (
+                {media.map((item) => (
                     <DiscoverHeroItem
                         key={item.id}
                         item={item}
                         type={type}
                         width={controller.screenWidth}
                         height={HERO_HEIGHT}
-                        index={index}
-                        onFocus={() => handleCarouselChildFocus(index)}
-                        onBlur={handleCarouselChildBlur}
+                        onFocus={() => {
+                            controller.notifyFocusEnter()
+                            onFocus?.()
+                        }}
+                        onBlur={() => {
+                            controller.notifyFocusExit()
+                            onBlur?.()
+                        }}
                     />
                 ))}
             </Animated.ScrollView>
@@ -647,9 +636,11 @@ export function DiscoverHeroCarouselInteractionLayer({ media, type, controller, 
                     style={{
                         position: "absolute",
                         bottom: isTV ? 36 : 24,
-                        left: isTV ? 32 : 20,
+                        left: 0,
+                        right: 0,
                         flexDirection: "row",
                         alignItems: "center",
+                        justifyContent: "center",
                         gap: isTV ? 8 : 5,
                     }}
                 >

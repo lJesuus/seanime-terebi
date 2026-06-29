@@ -12,7 +12,6 @@ import { useIsTV } from "@/hooks/use-device"
 import { useMangaLibraryCollection } from "@/hooks/use-manga-library-collection"
 import { useIsServerConnected } from "@/lib/offline"
 
-import { useIsFocused } from "@react-navigation/native"
 import { router, useFocusEffect } from "expo-router"
 import { useSetAtom } from "jotai"
 import * as React from "react"
@@ -30,7 +29,6 @@ type MangaShelfSection = {
 export default function MangaLibraryScreen() {
     const isConnected = useIsServerConnected()
     const isTV = useIsTV()
-    const isFocused = useIsFocused()
     const insets = useSafeAreaInsets()
     const [isPullRefreshing, setIsPullRefreshing] = React.useState(false)
 
@@ -152,7 +150,6 @@ export default function MangaLibraryScreen() {
                                 <LibraryHeroCarousel
                                     type="manga"
                                     mangaItems={currentlyReadingEntries}
-                                    isFocused={isFocused}
                                     scrollY={scrollY}
                                 />
                             ) : null

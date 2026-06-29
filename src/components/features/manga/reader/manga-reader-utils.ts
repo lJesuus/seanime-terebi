@@ -1,7 +1,6 @@
 import { appendServerHMACToken } from "@/api/client/server-auth"
 import { getServerBaseUrl } from "@/api/client/server-url"
 import type { HibikeManga_ChapterDetails, Manga_PageContainer } from "@/api/generated/types"
-import { MANGA_READING_MODE, type MangaReaderSettings } from "@/components/features/manga/reader/manga-reader-state"
 import type { DownloadedMangaChapter } from "@/lib/downloads"
 import type { Href } from "expo-router"
 
@@ -113,56 +112,12 @@ export function buildReaderPages(
     }))
 }
 
-export function buildReaderSpreads(
-    pages: MangaReaderPage[],
-    settings: MangaReaderSettings,
-): number[][] {
-    if (pages.length === 0) return []
-
-    if (settings.readingMode !== MANGA_READING_MODE.DOUBLE_PAGE) {
-        return pages.map(page => [page.index])
-    }
-
-    const pageDimensions = Object.fromEntries(
-        pages
-            .filter(page => !!page.width && !!page.height)
-            .map(page => [page.index, { width: page.width!, height: page.height! }]),
-    )
-
-    const widths = Object.values(pageDimensions).map(dimension => dimension.width)
-
-    const recurringWidth = getRecurringNumber(widths)
-    const fullSpreadThreshold = recurringWidth > 0 ? recurringWidth + 50 : 2000
-
-    const spreads: number[][] = []
-    let pageIndex = 0
-
-    while (pageIndex < pages.length) {
-        const currentPage = pages[pageIndex]
-        const currentWidth = pageDimensions[currentPage.index]?.width ?? 0
-
-        if (settings.doublePageOffset > 0 && pageIndex < settings.doublePageOffset) {
-            spreads.push([currentPage.index])
-            pageIndex += 1
-            continue
-        }
-
-        const nextPage = pages[pageIndex + 1]
-        const nextWidth = nextPage ? (pageDimensions[nextPage.index]?.width ?? 0) : 0
-        const isFullSpread = currentWidth > fullSpreadThreshold
-        const nextIsFullSpread = nextWidth > fullSpreadThreshold
-
-        if (isFullSpread || !nextPage || nextIsFullSpread) {
-            spreads.push([currentPage.index])
-            pageIndex += 1
-            continue
-        }
-
-        spreads.push([currentPage.index, nextPage.index])
-        pageIndex += 2
-    }
-
-    return spreads
+export function buildReaderSpreads(pages: MangaReaderPage[]): number[][] {
+    // TV-only reader: every spread is a single page (vertical LONG_STRIP).
+    // The spread abstraction is kept for compatibility because downstream
+    // code reads spread indexes in several places, but each spread now
+    // wraps exactly one page index.
+    return pages.map(page => [page.index])
 }
 
 export function getSpreadIndexForPage(spreads: number[][], pageIndex: number): number {
@@ -320,24 +275,3 @@ function getChapterCandidateScore(chapter: MangaReaderChapterRef, preferredProvi
     return score
 }
 
-function getRecurringNumber(numbers: number[]): number {
-    if (numbers.length === 0) return 0
-
-    const counts = new Map<number, number>()
-
-    for (const number of numbers) {
-        counts.set(number, (counts.get(number) ?? 0) + 1)
-    }
-
-    let maxCount = 0
-    let recurringNumber = 0
-
-    for (const [number, count] of counts.entries()) {
-        if (count > maxCount) {
-            maxCount = count
-            recurringNumber = number
-        }
-    }
-
-    return recurringNumber
-}

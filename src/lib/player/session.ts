@@ -762,21 +762,20 @@ export function useStartOnlineStreamPlayback() {
  * Called from the player route when it unmounts.
  */
 export function useCleanupPlaybackSession() {
-    const [source, setSource] = useAtom(currentPlaybackSourceAtom)
+    const [source] = useAtom(currentPlaybackSourceAtom)
     const [, setPlayerOpen] = useAtom(playerOpenAtom)
     const [, setLoadingMessage] = useAtom(playerLoadingMessageAtom)
     const [, setError] = useAtom(playerErrorAtom)
     const [, setPendingInfo] = useAtom(torrentStreamPendingInfoAtom)
-    const [, setStreamSessionMode] = useAtom(streamSessionModeAtom)
     const [, setIsPreparing] = useAtom(torrentStreamIsPreparingAtom)
     const [, setTorrentLoadingState] = useAtom(torrentStreamLoadingStateAtom)
     const [, setTorrentLoadingTorrentName] = useAtom(torrentStreamLoadingTorrentNameAtom)
-    const [, setTorrentStatus] = useAtom(torrentStreamStatusAtom)
-    const [, setTorrentIsLoaded] = useAtom(torrentStreamIsLoadedAtom)
-    const [, setDebridStreamState] = useAtom(debridStreamStateAtom)
 
     return React.useCallback(() => {
-            setSource(null)
+            // Keep the source and stream-state atoms alive so the
+            // "Resume" button can re-open the player. The WebSocket
+            // listener (mounted at root layout) handles cleanup when
+            // the stream actually stops on the server.
             setPlayerOpen(false)
             setLoadingMessage(null)
             setError(null)
@@ -786,14 +785,10 @@ export function useCleanupPlaybackSession() {
                 }
                 return null
             })
-            setStreamSessionMode(null)
             setIsPreparing(false)
             setTorrentLoadingState(null)
             setTorrentLoadingTorrentName(null)
-            setTorrentStatus(null)
-            setTorrentIsLoaded(false)
-            setDebridStreamState(null)
         },
-        [setDebridStreamState, setError, setIsPreparing, setLoadingMessage, setPendingInfo, setPlayerOpen, setSource, setStreamSessionMode,
-            setTorrentIsLoaded, setTorrentLoadingState, setTorrentLoadingTorrentName, setTorrentStatus])
+        [setError, setIsPreparing, setLoadingMessage, setPendingInfo, setPlayerOpen,
+            setTorrentLoadingState, setTorrentLoadingTorrentName])
 }

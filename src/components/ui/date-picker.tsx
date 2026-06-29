@@ -3,7 +3,7 @@ import { Ionicons } from "@expo/vector-icons"
 import DateTimePicker from "@react-native-community/datetimepicker"
 import { format } from "date-fns"
 import * as React from "react"
-import { Platform, Pressable, Text, View } from "react-native"
+import { Platform, Pressable, Text, View, findNodeHandle } from "react-native"
 import { SeaBottomSheet } from "./bottom-sheet"
 
 type DatePickerProps = {
@@ -12,6 +12,13 @@ type DatePickerProps = {
     onChange?: (date: Date | null) => void
     placeholder?: string
     format?: string
+    focusable?: boolean
+    /** When true, sets nextFocusLeft to the picker's own native tag,
+     * blocking LEFT navigation away from it. */
+    blockLeft?: boolean
+    /** When true, sets nextFocusRight to the picker's own native tag,
+     * blocking RIGHT navigation away from it. */
+    blockRight?: boolean
 }
 
 const DatePicker = ({
@@ -20,11 +27,35 @@ const DatePicker = ({
     onChange,
     placeholder = "Select date",
     format: dateFormat = "MM/dd/yyyy",
+    focusable,
+    blockLeft,
+    blockRight,
     ...props
 }: DatePickerProps) => {
     const [show, setShow] = React.useState(false)
     const [tempDate, setTempDate] = React.useState<Date | null>(null)
+    const [focused, setFocused] = React.useState(false)
     const isIOS = Platform.OS === "ios"
+
+    // Resolve the picker's native tag on layout so blockLeft/blockRight
+    // can route nextFocusLeft/Right to the picker itself — same pattern
+    // as TvFocusablePressable.
+    const pickerRef = React.useRef<React.ComponentRef<typeof Pressable>>(null)
+    const [leftBlockTag, setLeftBlockTag] = React.useState<number | null>(null)
+    const [rightBlockTag, setRightBlockTag] = React.useState<number | null>(null)
+    const tagResolved = React.useRef(false)
+
+    const handleLayout = React.useCallback(() => {
+        if (tagResolved.current) return
+        const node = pickerRef.current
+        if (!node) return
+        const tag = findNodeHandle(node)
+        if (tag !== null) {
+            if (blockLeft) setLeftBlockTag(tag)
+            if (blockRight) setRightBlockTag(tag)
+            if (blockLeft || blockRight) tagResolved.current = true
+        }
+    }, [blockLeft, blockRight])
 
     const handlePress = () => {
         setTempDate(value || new Date())
@@ -68,11 +99,21 @@ const DatePicker = ({
         <View>
 
             <Pressable
+                ref={pickerRef}
                 onPress={handlePress}
+                onLayout={handleLayout}
+                focusable={focusable}
+                onFocus={() => setFocused(true)}
+                onBlur={() => setFocused(false)}
                 className={cn(
-                    "flex-row items-center justify-between h-12 w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 active:bg-white/10",
+                    "flex-row items-center justify-between h-12 w-full rounded-2xl border bg-white/[0.04] px-4 active:bg-white/10",
+                    focused ? "border-brand-400 border-2 bg-white/[0.08]" : "border-white/10",
                     className,
                 )}
+                // @ts-ignore - nextFocusLeft/Right are TV fork props
+                nextFocusLeft={blockLeft && leftBlockTag ? leftBlockTag : undefined}
+                // @ts-ignore
+                nextFocusRight={blockRight && rightBlockTag ? rightBlockTag : undefined}
                 {...props}
             >
                 <Text className={cn("text-foreground", !value && "text-muted-foreground")}>
@@ -114,7 +155,7 @@ const DatePicker = ({
                 <DateTimePicker
                     value={value || new Date()}
                     mode="date"
-                    display="spinner"
+                    display="calendar"
                     onChange={handleChange}
                 />
             )}

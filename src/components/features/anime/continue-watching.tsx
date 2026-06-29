@@ -1,6 +1,7 @@
 import { Anime_Episode } from "@/api/generated/types"
 import { useGetContinuityWatchHistory } from "@/api/hooks/continuity.hooks"
 import { animeEntryPlaybackIntentAtom, createAnimeEntryPlaybackIntent } from "@/atoms/anime-entry.atoms"
+import { __focusedContinueWatchingEpisodeAtom } from "@/atoms/library.atoms"
 import { useServerStatus } from "@/atoms/server.atoms"
 import { EpisodeCardList } from "@/components/features/anime/episode-card-list"
 import { ContinueWatchingItem } from "@/hooks/use-anime-library-collection"
@@ -23,6 +24,7 @@ export function ContinueWatching(props: ContinueWatchingProps) {
     const { data: watchHistory } = useGetContinuityWatchHistory()
     const serverStatus = useServerStatus()
     const setPlaybackIntent = useSetAtom(animeEntryPlaybackIntentAtom)
+    const setFocusedEpisode = useSetAtom(__focusedContinueWatchingEpisodeAtom)
 
     const episodes = React.useMemo(() => items.map(item => item.episode), [items])
     const continueWatchingSpoilerActive = getContinueWatchingSpoilerActive(serverStatus)
@@ -53,6 +55,11 @@ export function ContinueWatching(props: ContinueWatchingProps) {
         })
     }, [items, setPlaybackIntent])
 
+    const handleEpisodeFocus = React.useCallback((episode: Anime_Episode) => {
+        const mediaId = episode.baseAnime?.id
+        if (!mediaId) return
+        setFocusedEpisode({ mediaId, episodeNumber: episode.episodeNumber })
+    }, [setFocusedEpisode])
 
     if (isLoading || !episodes?.length) return null
 
@@ -61,6 +68,7 @@ export function ContinueWatching(props: ContinueWatchingProps) {
             title="Continue watching"
             episodes={episodes}
             onEpisodePress={handleEpisodePress}
+            onEpisodeFocus={handleEpisodeFocus}
             watchHistory={watchHistory}
             spoilerActive={continueWatchingSpoilerActive}
             showAnimeTitle

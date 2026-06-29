@@ -263,8 +263,8 @@ export function AnimeEntryLibraryView({
                 renderItem={renderEpisode}
                 renderSectionHeader={renderSectionHeader}
                 keyExtractor={keyExtractor}
-                ListHeaderComponent={listHeader}
-                ListFooterComponent={showDeferredContent ? (
+                ListHeaderComponent={() => listHeader}
+                ListFooterComponent={() => showDeferredContent ? (
                     <View className="px-4 pt-6 pb-8">
                         <AnimeEntryInfoView mediaId={mediaId ?? entry.mediaId} fallbackDescription={entry.media?.description} />
                     </View>
@@ -274,7 +274,7 @@ export function AnimeEntryLibraryView({
                 windowSize={9}
                 updateCellsBatchingPeriod={16}
                 onScroll={scrollHandler}
-                ListEmptyComponent={hasEpisodes ? null : (
+                ListEmptyComponent={() => hasEpisodes ? null : (
                     <View className="">
                         <LuffyError
                             title="No local files scanned"

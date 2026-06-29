@@ -16,7 +16,6 @@ import { prefetchAllDiscoverQueries } from "@/components/features/discover/disco
 import { useServerUrl, useServerAuthToken } from "@/atoms/server.atoms"
 import { useQueryClient } from "@tanstack/react-query"
 
-import { useIsFocused } from "@react-navigation/native"
 import { router, useFocusEffect } from "expo-router"
 import { useSetAtom } from "jotai"
 import * as React from "react"
@@ -34,7 +33,6 @@ type LibraryShelfSection = {
 export default function LibraryScreen() {
     const isConnected = useIsServerConnected()
     const isTV = useIsTV()
-    const isFocused = useIsFocused()
     const insets = useSafeAreaInsets()
     const [isPullRefreshing, setIsPullRefreshing] = React.useState(false)
 
@@ -186,10 +184,9 @@ export default function LibraryScreen() {
                         <LibraryHeroCarousel
                             type="anime"
                             animeItems={continueWatchingList}
-                            isFocused={isFocused}
                             scrollY={scrollY}
                             onWatchPress={handleWatchPress}
-                            heightRatio={0.45}
+                            heightRatio={0.475}
                         />
                     )}
 

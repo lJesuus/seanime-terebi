@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils"
 import { router } from "expo-router"
 import { useAtom } from "jotai/react"
 import React from "react"
-import { Dimensions, FlatList, ListRenderItemInfo, View, Platform } from "react-native"
+import { Dimensions, FlatList, ListRenderItemInfo, Pressable, View, Platform } from "react-native"
 
 const { width } = Dimensions.get("screen")
 const isTV = Platform.isTV
@@ -34,6 +34,15 @@ type HorizontalMediaCardListProps<T extends "anime" | "manga"> = {
     onCardFocus?: (sectionIndex: number) => void
     onEndReached?: () => void
     compact?: boolean
+    /**
+     * When provided, attached ONLY to the first rendered card's inner
+     * `<Pressable>` so callers can capture its native nodeHandle. Used
+     * by the Discover tab to seed the hero carousel's `nextFocusDown`
+     * with the first-card tag bypassing the broken native spatial
+     * neighbour search inside the carousel's paging ScrollView.
+     */
+    firstCardRef?: React.Ref<React.ComponentRef<typeof Pressable>>
+
 }
 
 export function HorizontalMediaCardList<T extends "anime" | "manga">(props: HorizontalMediaCardListProps<T>) {
@@ -51,6 +60,7 @@ export function HorizontalMediaCardList<T extends "anime" | "manga">(props: Hori
         onCardFocus,
         onEndReached,
         compact = false,
+        firstCardRef,
     } = props
 
     const infiniteScroll = !!onEndReached
@@ -86,7 +96,7 @@ function SeeAllButton({
             onBlur={onBlur}
             style={{ width: CARD_WIDTH, height: CARD_WIDTH * 1.5 }}
             className="rounded-md flex justify-center items-center"
-            focusedClassName="bg-white/10 border-2 border-brand-400/80"
+            focusedClassName="bg-white/10 border-2 border-white/60"
         >
             <Button
                 variant="secondary"
@@ -146,6 +156,7 @@ function SeeAllButton({
                 hideLibraryBadge={hideLibraryBadge}
                 onFocus={handleFocus}
                 onBlur={handleBlur}
+                ref={index === 0 ? firstCardRef : undefined}
             />
         }
 
@@ -162,8 +173,9 @@ function SeeAllButton({
             hideLibraryBadge={hideLibraryBadge}
             onFocus={handleFocus}
             onBlur={handleBlur}
+            ref={index === 0 ? firstCardRef : undefined}
         />
-    }, [infiniteScroll, limit, media, onMediaPress, setMediaListPageContent, showAudienceScore, title, type, hideLibraryBadge, handleFocus, handleBlur])
+    }, [infiniteScroll, limit, media, onMediaPress, setMediaListPageContent, showAudienceScore, title, type, hideLibraryBadge, handleFocus, handleBlur, firstCardRef])
 
     if (media.length === 0) return null
 

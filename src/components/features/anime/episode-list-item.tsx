@@ -295,7 +295,7 @@ function EpisodeListItemInner({
                         className={cn(
                             "bg-card/30 border flex-row items-stretch px-3 py-3 rounded-xl",
                             isFocused
-                                ? "border-2 border-brand-400/80 shadow-2xl"
+                                ? "border-2 border-white/60 shadow-2xl"
                                 : "border-[0.5px] border-border/50",
                         )}
                     >

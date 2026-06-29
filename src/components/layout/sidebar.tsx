@@ -79,11 +79,14 @@ export function SidebarShell({
     const pressableRefs = React.useRef<(React.RefObject<React.ElementRef<typeof Pressable>> | null)[]>([])
 
     // Publish current tab button's native tag so TabFadeView can set
-    // nextFocusLeft / nextFocusUp on the content wrapper.
+    // nextFocusLeft / nextFocusUp on the content wrapper. `currentIndex`
+    // is the index in the `tabs` array — with Search occupying
+    // `pressableRefs[0]`, the corresponding tab button lives at
+    // `pressableRefs[currentIndex + 1]`.
     React.useLayoutEffect(() => {
         const count = tabs.length + 1
         if (pressableRefs.current.length < count) return
-        const idx = Math.max(0, currentIndex)
+        const idx = Math.max(0, currentIndex) + 1
         const ref = pressableRefs.current[idx]
         if (ref?.current) {
             setCurrentTabButtonTag(findNodeHandle(ref.current) as number)
@@ -128,18 +131,27 @@ export function SidebarShell({
 
     const [focusChain, setFocusChain] = React.useState<{ down: (number | null)[]; up: (number | null)[] } | null>(null)
     React.useLayoutEffect(() => {
+        // Search sits at pressableRefs[0] (first sidebar position); tabs
+        // follow at indices 1..tabs.length. DPAD-DOWN from Search walks
+        // to the first tab; DPAD-UP from the first tab walks back to
+        // Search. The last tab's `down` is `null` so the chain ends at
+        // the bottom of the sidebar.
         const itemCount = tabs.length + 1
         const down: (number | null)[] = []
         const up: (number | null)[] = []
         for (let i = 0; i < itemCount; i++) {
-            if (i < tabs.length) {
-                const nextRef = i < tabs.length - 1 ? pressableRefs.current[i + 1] : pressableRefs.current[tabs.length]
-                const prevRef = i > 0 ? pressableRefs.current[i - 1] : null
+            if (i === 0) {
+                // Search — first position. Only one `down` (the first tab).
+                const nextRef = pressableRefs.current[1]
                 down.push(nextRef?.current ? (findNodeHandle(nextRef.current) as number) : null)
-                up.push(prevRef?.current ? (findNodeHandle(prevRef.current) as number) : null)
+                up.push(null)
             } else {
-                down.push(null)
-                const prevRef = pressableRefs.current[tabs.length - 1]
+                // Tab at pressableRefs index i (1..tabs.length). Vertical
+                // chain within the tab range is the same as before, just
+                // shifted by one because Search is now at index 0.
+                const nextRef = i < tabs.length ? pressableRefs.current[i + 1] : null
+                const prevRef = i > 1 ? pressableRefs.current[i - 1] : pressableRefs.current[0]
+                down.push(nextRef?.current ? (findNodeHandle(nextRef.current) as number) : null)
                 up.push(prevRef?.current ? (findNodeHandle(prevRef.current) as number) : null)
             }
         }
@@ -169,16 +181,38 @@ export function SidebarShell({
             </View>
 
             <View className="flex-1 justify-center px-3 gap-2">
+                <SidebarButton
+                    key={"search"}
+                    focused={false}
+                    btnFocused={focusedIndex === 0}
+                    onPress={() => {
+                        router.push("/(app)/(tabs)/discover/search")
+                    }}
+                    onFocus={() => setFocusedIndex(0)}
+                    onBlur={() => setFocusedIndex(curr => curr === 0 ? null : curr)}
+                    tab={{ show: true, name: "search", displayName: "Search", icon: "search-outline" }}
+                    animatedLabelStyle={animatedLabelStyle}
+                    viewer={user}
+                    pressableRef={pressableRefs.current[0]!}
+                    nextFocusDown={focusChain ? focusChain.down[0] : undefined}
+                    nextFocusUp={focusChain ? focusChain.up[0] : undefined}
+                />
+
                 {tabs.filter(t => t.show).map((tab, index) => {
+                    // `index` is the position in the filtered tabs array
+                    // (0..visibleTabs.length-1). With Search at the top
+                    // of the sidebar, the tab lives at pressableRefs[index + 1]
+                    // and the `focusedIndex` for it is `index + 1`.
+                    const refIndex = index + 1
                     const isActive = tab.name === currentTabName
-                    const isBtnFocused = focusedIndex === index
+                    const isBtnFocused = focusedIndex === refIndex
 
                     const onPress = () => {
                         router.navigate(`/(tabs)/${tab.name}` as any)
                     }
 
-                    const nextFocusDown = focusChain ? focusChain.down[index] : undefined
-                    const nextFocusUp = focusChain ? focusChain.up[index] : undefined
+                    const nextFocusDown = focusChain ? focusChain.down[refIndex] : undefined
+                    const nextFocusUp = focusChain ? focusChain.up[refIndex] : undefined
 
                     return (
                         <SidebarButton
@@ -186,33 +220,17 @@ export function SidebarShell({
                             focused={isActive}
                             btnFocused={isBtnFocused}
                             onPress={onPress}
-                            onFocus={() => setFocusedIndex(index)}
-                            onBlur={() => setFocusedIndex(curr => curr === index ? null : curr)}
+                            onFocus={() => setFocusedIndex(refIndex)}
+                            onBlur={() => setFocusedIndex(curr => curr === refIndex ? null : curr)}
                             tab={tab}
                             animatedLabelStyle={animatedLabelStyle}
                             viewer={user}
-                            pressableRef={pressableRefs.current[index]!}
+                            pressableRef={pressableRefs.current[refIndex]!}
                             nextFocusDown={nextFocusDown}
                             nextFocusUp={nextFocusUp}
                         />
                     )
                 })}
-
-                <SidebarButton
-                    key={"search"}
-                    focused={false}
-                    btnFocused={focusedIndex === tabs.length}
-                    onPress={() => {
-                        router.push("/(app)/(tabs)/discover/search")
-                    }}
-                    onFocus={() => setFocusedIndex(tabs.length)}
-                    onBlur={() => setFocusedIndex(curr => curr === tabs.length ? null : curr)}
-                    tab={{ show: true, name: "search", displayName: "Search", icon: "search-outline" }}
-                    animatedLabelStyle={animatedLabelStyle}
-                    viewer={user}
-                    pressableRef={pressableRefs.current[tabs.length]!}                        nextFocusDown={focusChain ? focusChain.down[tabs.length] : undefined}
-                        nextFocusUp={focusChain ? focusChain.up[tabs.length] : undefined}
-                    />
             </View>
 
             <View className="h-24 justify-center px-6 mb-6">

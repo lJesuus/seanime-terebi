@@ -14,6 +14,7 @@ import {
     torrentStreamPendingInfoAtom,
     torrentStreamStatusAtom,
 } from "@/lib/player"
+import { router } from "expo-router"
 import { useAtom } from "jotai"
 import { useAtomValue, useSetAtom } from "jotai/react"
 import * as React from "react"
@@ -191,6 +192,16 @@ export function AnimeEntryTorrentStreamSection({ entry }: AnimeEntryTorrentStrea
                         >
                             <Text className="text-white text-xs font-semibold">
                                 {torrentStream.isStopping ? "Stopping..." : "Stop"}
+                            </Text>
+                        </Button>
+                        <Button
+                            size="sm"
+                            variant="unstyled"
+                            onPress={() => router.push("/(app)/(media)/player")}
+                            className="rounded-full border border-white/20 bg-white/10 px-3"
+                        >
+                            <Text className="text-white text-xs font-semibold">
+                                Resume
                             </Text>
                         </Button>
                     </View>

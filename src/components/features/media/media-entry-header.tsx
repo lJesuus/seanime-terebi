@@ -432,7 +432,7 @@ function MediaEntryHeaderContentInner({
                                 entry={entry}
                                 type={type}
                                 roundedShape="rect"
-                                addLabel="Add to list"
+                                addLabel={entry?.listData ? "Edit List" : "Add to list"}
                                 buttonClassName="h-9 px-3"
                             />
                     </View>

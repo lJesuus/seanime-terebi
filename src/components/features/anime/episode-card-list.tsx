@@ -23,6 +23,7 @@ type EpisodeCardListProps = {
     title?: string
     episodes: Anime_Episode[]
     onEpisodePress?: (episode: Anime_Episode) => void
+    onEpisodeFocus?: (episode: Anime_Episode) => void
     mediaId?: number
     watchHistory?: Continuity_WatchHistory
     watchedProgress?: number
@@ -47,6 +48,7 @@ export function EpisodeCardList(props: EpisodeCardListProps) {
         title,
         episodes,
         onEpisodePress,
+        onEpisodeFocus,
         mediaId,
         watchHistory,
         watchedProgress,
@@ -97,11 +99,14 @@ export function EpisodeCardList(props: EpisodeCardListProps) {
                 disabled={disabled}
                 thumbnailOverlay={isLoading ? <EpisodeLoadingBadge /> : undefined}
                 animeTitle={animeTitle}
-                onFocus={notifyShelfFocusIn}
+                onFocus={() => {
+                    notifyShelfFocusIn()
+                    onEpisodeFocus?.(item)
+                }}
                 onBlur={notifyShelfFocusOut}
             />
         )
-    }, [disabled, loadingEpisodeNumber, mediaId, onEpisodePress, serverStatus, spoilerActive, watchedProgress, watchHistory, showAnimeTitle, notifyShelfFocusIn, notifyShelfFocusOut])
+    }, [disabled, loadingEpisodeNumber, mediaId, onEpisodePress, onEpisodeFocus, serverStatus, spoilerActive, watchedProgress, watchHistory, showAnimeTitle, notifyShelfFocusIn, notifyShelfFocusOut])
 
     // Standard TV nav: each card is individually focusable on TV; the
     // native focus engine handles DPAD navigation and scrolls the focused

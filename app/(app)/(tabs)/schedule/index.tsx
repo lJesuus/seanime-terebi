@@ -20,7 +20,7 @@ import { router } from "expo-router"
 import { useAtom } from "jotai/react"
 import sortBy from "lodash/sortBy"
 import * as React from "react"
-import { AccessibilityInfo, ActivityIndicator, Dimensions, FlatList, Pressable, RefreshControl, ScrollView, Text, View, findNodeHandle } from "react-native"
+import { ActivityIndicator, Dimensions, FlatList, Pressable, RefreshControl, ScrollView, Text, View, findNodeHandle } from "react-native"
 import Animated, { FadeIn, useAnimatedStyle, useSharedValue, withSpring } from "react-native-reanimated"
 
 // TV-only build: these sizing constants pick the larger of the two paths.
@@ -48,12 +48,40 @@ export default function ScheduleScreen() {
     const [settingsOpen, setSettingsOpen] = React.useState(false)
     const [monthPickerOpen, setMonthPickerOpen] = React.useState(false)
 
-    // Ref that points at the gear-icon button in the header row. Captured so
-    // we can programmatically restore focus on it after the settings drawer
-    // closes (BACK button or tap-out). TV focus restoration on Android TV is
-    // unreliable across modal-style panels; doing it ourselves guarantees the
-    // user returns to the same button they came from.
-    const settingsButtonRef = React.useRef<React.ComponentRef<typeof Pressable>>(null)
+    // ── Settings drawer focus return (player.tsx Option D pattern) ──
+    // When the schedule settings drawer closes (e.g. TV physical BACK,
+    // tap-out), we flag the gear-icon button with `hasTVPreferredFocus`
+    // so RN TV's native focus engine resolves focus to it naturally once
+    // the drawer's focused row unmounts. No imperative `.focus()` calls
+    // — those proved unreliable on real hardware (see player.tsx line
+    // 822's "Option D" comment). The `onFocus` callback on the gear
+    // button clears the flag once focus has landed, preventing the button
+    // from re-claiming focus on subsequent render events.
+    //
+    // We must also clear the flag when the drawer opens, otherwise the
+    // gear button would compete with the drawer's first row (which claims
+    // `hasTVPreferredFocus` too) for the engine's initial focus pick.
+    // Tracking previous state via a ref lets us detect both transitions
+    // without firing on the initial mount where `settingsOpen` starts at
+    // `false`.
+    const [shouldFocusSettings, setShouldFocusSettings] = React.useState(false)
+    const handleSettingsFocused = React.useCallback(() => {
+        setShouldFocusSettings(false)
+    }, [])
+    const previousSettingsOpenRef = React.useRef<boolean>(false)
+    React.useEffect(() => {
+        const wasOpen = previousSettingsOpenRef.current
+        previousSettingsOpenRef.current = settingsOpen
+        // open → close: claim focus via hasTVPreferredFocus
+        if (wasOpen && !settingsOpen) {
+            setShouldFocusSettings(true)
+        }
+        // close → open: clear flag so the drawer rows' hasTVPreferredFocus
+        // (the first status row) wins the initial focus pick
+        if (!wasOpen && settingsOpen) {
+            setShouldFocusSettings(false)
+        }
+    }, [settingsOpen])
 
     // Ref attached to the first status row inside the schedule settings
     // drawer. SeaSideDrawer steers its initial focus here so the user lands
@@ -144,30 +172,6 @@ export default function ScheduleScreen() {
         />
     ) : undefined
 
-    // When the schedule settings drawer closes (e.g. TV physical BACK
-    // button), restart the native TV focus engine on the gear-icon button.
-    // Both `.focus()` on a Pressable ref and `UIManager.dispatchViewManagerCommand`
-    // proved unreliable on actual hardware (non-certified Android TV loses the
-    // focus and tvOS sometimes ignores the dispatch when the modal Portal is
-    // unmounting). `AccessibilityInfo.setAccessibilityFocus(tag)` posts a
-    // native focus request through the OS accessibility/focus engine — the
-    // same channel assistive-technology uses — and is the only RN API known to
-    // reliably route to Android's `requestFocus()` and tvOS's
-    // `becomeFirstResponder()` even mid-Unmount. The 360 ms delay skips past
-    // the drawer's close animation (200 ms) plus a small buffer so the
-    // underlying View is interactive before the focus command lands.
-    React.useEffect(() => {
-        if (settingsOpen) return
-        const node = settingsButtonRef.current
-        if (!node) return
-        const tag = findNodeHandle(node)
-        if (tag == null) return
-        const timer = setTimeout(() => {
-            AccessibilityInfo.setAccessibilityFocus(tag)
-        }, 360)
-        return () => clearTimeout(timer)
-    }, [settingsOpen])
-
     return (
         <View className="flex-1 bg-background">
             <OfflineBanner />
@@ -207,7 +211,18 @@ export default function ScheduleScreen() {
                     </View>
 
                     <Focusable
-                        ref={settingsButtonRef}
+                        // `hasTVPreferredFocus` and `onFocus` together
+                        // implement the post-close focus return: when the
+                        // drawer unmounts the engine resolves focus to the
+                        // gear button (which has hasTVPreferredFocus flipping
+                        // to true on the open→close transition); once focus
+                        // lands, `handleSettingsFocused` clears the flag so
+                        // the gear button doesn't keep claiming focus on
+                        // every subsequent re-render. The flag is cleared
+                        // again on close→open so the drawer's first status
+                        // row wins the initial focus pick instead.
+                        hasTVPreferredFocus={shouldFocusSettings}
+                        onFocus={handleSettingsFocused}
                         onPress={() => setSettingsOpen(true)}
                         hitSlop={12}
                         focusedClassName="bg-white/10"
@@ -224,6 +239,16 @@ export default function ScheduleScreen() {
                     getEventCount={getEventCount}
                     onNavigatePrevWeek={goToPreviousWeek}
                     onNavigateNextWeek={goToNextWeek}
+                    // Suppress today's day cell's hasTVPreferredFocus while
+                    // the gear button is claiming focus (just after the
+                    // settings drawer closes). The native TV focus engine
+                    // would otherwise see both the gear button and today's
+                    // cell as preferred-focus candidates and the choice
+                    // would be undefined. Once the gear button receives
+                    // focus, `handleSettingsFocused` clears
+                    // `shouldFocusSettings` and today's cell resumes its
+                    // standard claim.
+                    suppressTodayFocus={shouldFocusSettings}
                 />
 
                 {!isConnected ? (
@@ -330,6 +355,7 @@ function WeekDaySelector({
     getEventCount,
     onNavigatePrevWeek,
     onNavigateNextWeek,
+    suppressTodayFocus,
 }: {
     weekDays: Date[]
     selectedDate: Date
@@ -337,6 +363,14 @@ function WeekDaySelector({
     getEventCount: (date: Date) => number
     onNavigatePrevWeek?: () => void
     onNavigateNextWeek?: () => void
+    /**
+     * When true, the today's day cell yields its hasTVPreferredFocus
+     * claim so the gear button (which itself carries hasTVPreferredFocus
+     * during a brief post-close window) wins the focus resolution when
+     * the settings drawer unmounts. Set during the open→close
+     * transition; cleared once focus actually lands on the gear.
+     */
+    suppressTodayFocus?: boolean
 }) {
     const today = new Date()
     const [navDirection, setNavDirection] = React.useState<"prev" | "next" | null>(null)
@@ -381,13 +415,18 @@ function WeekDaySelector({
                         count={count}
                         dayNumber={dayNumber}
                         onSelect={onSelectDate}
-                        // First TV focus on this screen must land on today's day
-                        // cell. The prev/next-week rules below steer focus when
-                        // the user has just navigated to a different week and
-                        // need to enter it at the appropriate end (Sunday for
+                        // First TV focus on this screen must land on today's
+                        // day cell \u2014 except when the gear button is
+                        // currently claiming focus right after the settings
+                        // drawer closed (`suppressTodayFocus`), in which
+                        // case the gear takes precedence so the user lands
+                        // back on the affordance they came from. The
+                        // prev/next-week rules steer focus when the user
+                        // has just navigated to a different week and need
+                        // to enter it at the appropriate end (Sunday for
                         // `prev`, Monday for `next`).
                         hasTVPreferredFocus={
-                            isToday ||
+                            (isToday && !suppressTodayFocus) ||
                             (i === 0 && navDirection === "next") ||
                             (i === 6 && navDirection === "prev")
                         }
@@ -423,9 +462,29 @@ function WeekDayItem({
     hasTVPreferredFocus?: boolean
 }) {
     const [isFocused, setIsFocused] = React.useState(false)
+    // Capture this element's native tag so we can route DPAD-DOWN back to
+    // itself when the day has no events. Setting `nextFocusDown` to the
+    // element's own tag is the standard RN TV idiom for blocking focus
+    // navigation in a given direction — the engine tries to focus the
+    // element that's already focused, which is a no-op. We can't use
+    // `TvFocusablePressable`'s `blockDown` prop here because it caches
+    // the captured tag via a one-shot `tagResolved` ref, so if a day
+    // cell's count flips between empty and non-empty across week
+    // navigation the cached tag stays set and the block sticks.
+    const innerRef = React.useRef<React.ComponentRef<typeof Pressable>>(null)
+    const [selfTag, setSelfTag] = React.useState<number | null>(null)
+    const handleLayout = React.useCallback(() => {
+        const node = innerRef.current
+        if (!node) return
+        const tag = findNodeHandle(node)
+        if (tag !== null && tag !== undefined && tag !== selfTag) {
+            setSelfTag(tag)
+        }
+    }, [selfTag])
 
     return (
         <Pressable
+            ref={innerRef}
             focusable={true}
             hasTVPreferredFocus={hasTVPreferredFocus}
             onFocus={() => {
@@ -436,6 +495,8 @@ function WeekDayItem({
             className="items-center flex-1"
             onPress={() => onSelect(day)}
             hitSlop={4}
+            onLayout={handleLayout}
+            {...(count === 0 && selfTag !== null ? { nextFocusDown: selfTag } : {})}
         >
             <View
                 className={cn(

@@ -41,7 +41,6 @@ function TVContentItem({
     onFocus,
     onPress,
     hideChevron,
-    hasTVPreferredFocus,
     nextFocusRight,
     nextFocusLeft,
 }: {
@@ -53,7 +52,6 @@ function TVContentItem({
     onFocus?: () => void
     onPress?: () => void
     hideChevron?: boolean
-    hasTVPreferredFocus?: boolean
     nextFocusRight?: number | null
     nextFocusLeft?: number | null
 }) {
@@ -69,7 +67,6 @@ function TVContentItem({
             focusedClassName="border-brand-400/60 bg-white/[0.04]"
             onFocus={onFocus}
             onPress={onPress}
-            hasTVPreferredFocus={hasTVPreferredFocus}
             nextFocusRight={nextFocusRight ?? undefined}
             nextFocusLeft={nextFocusLeft ?? undefined}
         >
@@ -364,9 +361,6 @@ export function ProfileTVLayout({
     )
     const activeItem = activeItemSection?.items.find(i => i.id === activeItemId)
 
-    // First item across all sections (for hasTVPreferredFocus)
-    const globalFirstItemId = visibleSections[0]?.items[0]?.id
-
     // Scroll to focused item
     const scrollRef = React.useRef<ScrollView>(null)
 
@@ -427,7 +421,6 @@ export function ProfileTVLayout({
                                         onFocus={() => handleItemFocus(item.id, globalIdx)}
                                         onPress={item.onPress}
                                         hideChevron={item.hideChevron}
-                                        hasTVPreferredFocus={item.id === globalFirstItemId}
                                         nextFocusRight={rightPanelNode}
                                     />
                                 )

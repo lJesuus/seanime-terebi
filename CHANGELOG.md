@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.1.3
+
+- ⚡️ Sidebar: Search button moved to the first slot for quicker access
+- ⚡️ Manga reader: Settings drawer revamped with full-width rows, focus-trapped drawer, and auto-apply toggles
+- ⚡️ Sidebar: Footer separator configurable per drawer; no border above the Reset button in the manga reader
+- ⚡️ Discover: Custom snap scrolling, hero carousel focus wiring, and section activation tuning
+- ⚡️ Library: Hero carousel, continue watching, and shelves reworked for TV focus and TV sizing
+- ⚡️ TV layout, sidebar, player, and profile refinements
+- 🦺 Sidebar: Fixed "Text strings must be rendered within a <Text> component" error caused by an em-dash in a JSX comment
+
 ## v0.1.20
 
 - 🎉 Alpha release

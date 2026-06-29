@@ -4,7 +4,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     ...config,
     name: "Seanime",
     slug: "seanime-app",
-    version: "0.1.20",
+    version: "0.1.3",
     orientation: "default",
     icon: "./src/assets/images/icon.png",
     scheme: "seanime",

@@ -47,6 +47,15 @@ type SeaSideDrawerProps = {
      * interactive row rather than the panel header.
      */
     firstFocusRef?: React.RefObject<React.ComponentRef<typeof Pressable> | null>
+    /**
+     * Whether to render the drawer's footer wrapper with a thin top
+     * separator line (`rgba(255,255,255,0.08)`). Defaults to `true` so
+     * existing drawers keep their visual separation between body and
+     * footer. Pass `false` for drawers that present the footer as part
+     * of a continuous content list (e.g. the manga reader settings
+     * panel where the Reset button sits flush with the section above).
+     */
+    footerSeparator?: boolean
 }
 
 const OPEN_DURATION = 250
@@ -63,6 +72,7 @@ export function SeaSideDrawer({
     widthFraction = 0.85,
     maxWidth = Number.MAX_SAFE_INTEGER,
     firstFocusRef,
+    footerSeparator = true,
 }: SeaSideDrawerProps) {
     const id = useId()
     const insets = useSafeAreaInsets()
@@ -287,7 +297,18 @@ export function SeaSideDrawer({
                                             style={{
                                                 marginTop: 8,
                                                 paddingVertical: 12,
-                                                borderTopWidth: 1,
+                                                // `gap` lets multi-button
+                                                // footers (e.g. Reset +
+                                                // future Cancel/Save) sit
+                                                // with native spacing; the
+                                                // current manga reader
+                                                // sheet has a single Reset
+                                                // button so gap is a no-op
+                                                // visually there.
+                                                flexDirection: "row",
+                                                alignItems: "center",
+                                                gap: 12,
+                                                borderTopWidth: footerSeparator ? 1 : 0,
                                                 borderTopColor: "rgba(255,255,255,0.08)",
                                             }}
                                         >

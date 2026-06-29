@@ -1,29 +1,27 @@
 import { useGetMangaEntry, useGetMangaEntryChapters, useGetMangaEntryPages, useUpdateMangaProgress } from "@/api/hooks/manga.hooks"
+import { __mangaReaderChromeBackTagAtom, __mangaReaderFirstPageTagAtom, __mangaReaderLastPageTagAtom } from "@/atoms/library.atoms"
 import { useServerStatus, useServerUrl } from "@/atoms/server.atoms"
-import { getReaderImageSize, getReaderPageAspectRatio } from "@/components/features/manga/reader/manga-reader-layout"
+import { DEFAULT_READER_PAGE_ASPECT_RATIO, getReaderImageSize } from "@/components/features/manga/reader/manga-reader-layout"
 import { MangaReaderSettingsSheet } from "@/components/features/manga/reader/manga-reader-settings-sheet"
 import {
     MANGA_READING_DIRECTION,
     MANGA_READING_MODE,
     useMangaReaderPosition,
     useMangaReaderSettings,
+    type MangaReaderSettings,
 } from "@/components/features/manga/reader/manga-reader-state"
 import {
     buildReaderPages,
-    buildReaderSpreads,
     clamp,
     formatMangaReaderHref,
-    formatPageLabel,
     getAdjacentChapters,
     getChapterProgressNumber,
-    getCurrentSpreadPages,
-    getSpreadIndexForPage,
     type MangaReaderChapterRef,
     type MangaReaderPage,
 } from "@/components/features/manga/reader/manga-reader-utils"
-import { MangaReaderZoomSurface } from "@/components/features/manga/reader/manga-reader-zoom-surface"
-import { useMangaReaderAndroidLongStrip } from "@/components/features/manga/reader/use-manga-reader-android-long-strip"
 import { Button } from "@/components/ui/button"
+import { TVFocusContext } from "@/contexts/tv-focus-context"
+import { useAtom, useSetAtom } from "jotai/react"
 import { TvFocusablePressable } from "@/components/ui/tv-focusable"
 import { useIsTV } from "@/hooks/use-device"
 import {
@@ -35,17 +33,14 @@ import {
 import { useIsServerConnected } from "@/lib/offline"
 import { cn } from "@/lib/utils"
 import Ionicons from "@expo/vector-icons/Ionicons"
-import Slider from "@react-native-community/slider"
-import { FlashList, type FlashListRef, type ListRenderItemInfo, type ViewToken } from "@shopify/flash-list"
 import { Image } from "expo-image"
 import { Stack, useRouter } from "expo-router"
 import * as React from "react"
 import {
     ActivityIndicator,
-    type LayoutChangeEvent,
+    findNodeHandle,
     type NativeScrollEvent,
     type NativeSyntheticEvent,
-    Platform,
     Pressable,
     ScrollView,
     StatusBar,
@@ -53,8 +48,6 @@ import {
     useWindowDimensions,
     View,
 } from "react-native"
-import { LinearGradient } from "expo-linear-gradient"
-import Animated, { FadeIn, FadeOut, useAnimatedStyle, useSharedValue, withSpring } from "react-native-reanimated"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 
 type MangaReaderScreenProps = {
@@ -64,25 +57,17 @@ type MangaReaderScreenProps = {
     chapterNumber?: string
 }
 
-type SpreadState = {
-    currentPageIndex: number
-    currentSpreadIndex: number
-}
-
-const VIRTUALIZED_LONG_STRIP_DRAW_DISTANCE_MULTIPLIER = 1.75
-
 export function MangaReaderScreen({ mediaId, provider, chapterId, chapterNumber }: MangaReaderScreenProps) {
     const router = useRouter()
     const insets = useSafeAreaInsets()
     const isTV = useIsTV()
+    const { sidebarTag } = React.useContext(TVFocusContext)
     const serverUrl = useServerUrl()
     const serverStatus = useServerStatus()
     const { width: screenWidth, height: screenHeight } = useWindowDimensions()
     const isConnected = useIsServerConnected()
 
-    const readerHeight = Math.max(320, screenHeight - insets.top - insets.bottom - 44)
-    const isCompact = screenWidth < 900
-
+    // ─── Data fetching ─────────────────────────────────────────────────────
     const { data: entry } = useGetMangaEntry(mediaId)
     const { data: chapterContainer } = useGetMangaEntryChapters({
         mediaId,
@@ -94,16 +79,18 @@ export function MangaReaderScreen({ mediaId, provider, chapterId, chapterNumber 
     const localPages = useLocalMangaChapterPages(mediaId, provider, chapterId)
     const downloadedChapters = useAllDownloadedMangaChapters(mediaId)
 
-    const { settings, setSetting, resetSettings, defaults } = useMangaReaderSettings(mediaId, isCompact)
+    const { settings, setSetting, resetSettings, defaults } = useMangaReaderSettings(mediaId)
     const { pageIndex: savedPageIndex, setPageIndex: setSavedPageIndex } = useMangaReaderPosition(mediaId, provider, chapterId)
-    const isDoublePageOrLongStrip = settings.readingMode === MANGA_READING_MODE.DOUBLE_PAGE
-        || settings.readingMode === MANGA_READING_MODE.LONG_STRIP
 
+    // Page container fetch — TV doesn't need page dimensions (no pinch
+    // zoom); the only reason `doublePage` was flipped on was to bring back
+    // measurements for spreads. The LONG_STRIP vertical path now happily
+    // works on whatever the server returns.
     const { data: pageContainer, isLoading: pageContainerLoading, isError: pageContainerError } = useGetMangaEntryPages({
         mediaId,
         provider: isConnected ? provider : undefined,
         chapterId: isConnected ? chapterId : undefined,
-        doublePage: isDoublePageOrLongStrip, // doublePage returns page dimensions
+        doublePage: false,
     })
 
     const onlineChapters = chapterContainer?.chapters ?? []
@@ -128,257 +115,343 @@ export function MangaReaderScreen({ mediaId, provider, chapterId, chapterNumber 
         [currentChapter, downloadedChapters, onlineChapters],
     )
 
-    // keep the next chapter warm so chapter turns do not flash a loader
-    // devnote: disabled for local-manga to prevent cache pollution (until i fix the server-side handling)
+    // Pre-warm the next chapter so chapter turns don't flash a loader.
+    // Disabled for local-manga to prevent cache pollution.
     useGetMangaEntryPages({
         mediaId,
         provider: (isConnected && nextChapter && provider !== "local-manga") ? nextChapter.provider : undefined,
         chapterId: (isConnected && nextChapter && provider !== "local-manga") ? nextChapter.chapterId : undefined,
-        doublePage: isDoublePageOrLongStrip,
+        doublePage: false,
     })
 
-    const rawPages = React.useMemo(() => buildReaderPages(serverUrl, pageContainer, localPages, downloadedChapterInfo?.pageDimensions),
+    const pages = React.useMemo(() => buildReaderPages(serverUrl, pageContainer, localPages, downloadedChapterInfo?.pageDimensions),
         [downloadedChapterInfo?.pageDimensions, localPages, pageContainer, serverUrl])
 
-    const pages = rawPages
-    const spreads = React.useMemo(() => buildReaderSpreads(pages, settings), [pages, settings])
+    // `displayPages` is the order pages are actually rendered. `pages` keeps
+    // the server's natural (RTL) order; `displayPages` reverses it when
+    // the user picked LTR. Reading-direction toggles flip this array only;
+    // `pages[i].index` (the server's stamp) is preserved through the
+    // reversal — we use it at the restore/save boundary so the
+    // chapterKey-indexed Jotai position storage stays direction-agnostic
+    // and toggling direction mid-chapter translates the saved offset
+    // correctly across the mirror.
+    const displayPages = React.useMemo(
+        () => settings.readingDirection === MANGA_READING_DIRECTION.LTR ? [...pages].reverse() : pages,
+        [pages, settings.readingDirection],
+    )
 
-    // TV-only: controls start hidden. The user toggles them via a tap or
-    // DPAD_CENTER; on TV they auto-hide on a delay once visible.
-    const [controlsVisible, setControlsVisible] = React.useState(false)
+    const serverToDisplayIdx = React.useCallback(
+        (serverIdx: number) => settings.readingDirection === MANGA_READING_DIRECTION.LTR
+            ? pages.length - 1 - serverIdx
+            : serverIdx,
+        [pages.length, settings.readingDirection],
+    )
+    const displayToServerIdx = React.useCallback(
+        (displayIdx: number) => settings.readingDirection === MANGA_READING_DIRECTION.LTR
+            ? pages.length - 1 - displayIdx
+            : displayIdx,
+        [pages.length, settings.readingDirection],
+    )
+
+    // Reading mode affects the per-row layout: LONG_STRIP keeps one page
+    // per row (full screen width); DOUBLE_PAGE pairs pages side-by-side
+    // (each column at half width). `displaySpreads` is the array of
+    // `MangaReaderPage` rows the renderer iterates over; `findTopmostVisiblePage`
+    // and the pageGeometry deps below operate on spreads (not pages)
+    // because every row has identical height in the chosen mode — the
+    // focus chain inside a spread continues to be a flat list of pages
+    // for native spatial nav.
+    const displaySpreads = React.useMemo(() => {
+        if (settings.readingMode === MANGA_READING_MODE.DOUBLE_PAGE) {
+            const spreads: Array<MangaReaderPage[]> = []
+            for (let i = 0; i < displayPages.length; i += 2) {
+                spreads.push(displayPages.slice(i, i + 2))
+            }
+            return spreads
+        }
+        return displayPages.map(page => [page])
+    }, [displayPages, settings.readingMode])
+
+    // Effective per-page width passed to `getReaderImageSize` and to
+    // `ReaderPageImage` so render-bounds and layout math agree. In
+    // LONG_STRIP each page gets the full screen width; in DOUBLE_PAGE
+    // pages share the row so each gets half (minus a small inter-page gap
+    // so two manga pages don't touch edge-to-edge at TV scale).
+    const interColumnGap = 8
+    const pagesPerSpread = settings.readingMode === MANGA_READING_MODE.DOUBLE_PAGE ? 2 : 1
+    const effectiveScreenWidth = React.useMemo(() => (
+        pagesPerSpread === 1
+            ? screenWidth
+            : Math.max(1, (screenWidth - interColumnGap * (pagesPerSpread - 1)) / pagesPerSpread)
+    ), [pagesPerSpread, screenWidth])
+
+    // Index translators between display-page-index and spread-index.
+    // LONG_STRIP: spread = page, so the two indices are equal.
+    // DOUBLE_PAGE: each spread contains two display-pages; spreadIdx =
+    // floor(displayIdx / 2) and the first page of spread k sits at
+    // displayIdx 2k. These helpers are the boundary between
+    // `pages`-derived math (always per-page) and `pageGeometry.tops` /
+    // `findTopmostVisiblePage` (always per-spread).
+    const displayToSpreadIdx = React.useCallback(
+        (displayIdx: number) => pagesPerSpread === 2 ? Math.floor(displayIdx / 2) : displayIdx,
+        [pagesPerSpread],
+    )
+    const spreadIdxToFirstDisplayIdx = React.useCallback(
+        (spreadIdx: number) => pagesPerSpread === 2 ? spreadIdx * 2 : spreadIdx,
+        [pagesPerSpread],
+    )
+
+    // ─── Local UI state ────────────────────────────────────────────────────
     const [settingsOpen, setSettingsOpen] = React.useState(false)
-    const [spreadState, setSpreadState] = React.useState<SpreadState>({ currentPageIndex: 0, currentSpreadIndex: 0 })
-    const [flashText, setFlashText] = React.useState<string | null>(null)
-    const [activeZoomId, setActiveZoomId] = React.useState<string | null>(null)
     const [settingsSheetNonce, setSettingsSheetNonce] = React.useState(0)
-    const [viewMode, setViewMode] = React.useState(0) // 0=full-width, 1=intermediate, 2=fit-page
+    const [flashText, setFlashText] = React.useState<string | null>(null)
 
-    const cycleViewMode = React.useCallback(() => {
-        setViewMode(prev => {
-            const next = ((prev + 1) % 3) as 0 | 1 | 2
-            const labels = ["Fit Width", "Fit Height", "Fit Page"]
-            setFlashText(labels[next])
-            return next
-        })
-    }, [])
+    // Ref attached to the FIRST option (Long Strip) inside the settings
+    // sheet's Reading Mode section. Threaded through
+    // `MangaReaderSettingsSheet.firstFocusRef` so SeaSideDrawer's
+    // 60 ms-after-mount focus call lands on Long Strip and the same
+    // row carries `hasTVPreferredFocus` for the native TV focus engine
+    // on Android TV / tvOS. Setting firstFocusSettingOptionRef is the
+    // single handle the consumer needs — the sheet internally mirrors
+    // the ref onto the OptionGrid's first option's `TvFocusablePressable`.
+    const firstFocusSettingOptionRef = React.useRef<React.ComponentRef<typeof Pressable>>(null)
 
-    const horizontalListRef = React.useRef<FlashListRef<number[]> | null>(null)
-    const verticalListRef = React.useRef<FlashListRef<number[]> | null>(null)
-    const longStripScrollRef = React.useRef<ScrollView | null>(null)
-    const longStripContentOffsetRef = React.useRef(0)
-    const currentPageIndexRef = React.useRef(0)
+    const scrollRef = React.useRef<ScrollView | null>(null)
+    // Dual ref+state pattern: ref is the live truth for anything that reads
+    // the offset inside JS-side callbacks (rAF animators, restore effect);
+    // state drives React re-renders so the progress bar updates during
+    // smooth-scroll animations (~60Hz scrollEventThrottle fires on each
+    // rAF tick when the animator writes the offset).
+    const scrollOffsetRef = React.useRef(0)
+    const [scrollOffset, setScrollOffset] = React.useState(0)
     const restoringPositionRef = React.useRef(false)
     const didRestoreInitialPageRef = React.useRef(false)
-    const pendingLongStripRestoreRef = React.useRef<number | null>(null)
     const syncMarkerRef = React.useRef<string | null>(null)
-    const longStripSpreadLayoutsRef = React.useRef<Record<number, { y: number; height: number }>>({})
+    // Last chapter we auto-restored scroll for. Layout-affecting settings
+    // (page gap toggle, gap amount step, etc.) recompute `pageGeometry.tops`
+    // and would otherwise re-fire the restore effect mid-session, snapping
+    // the user back to their saved page. We restore at most once per
+    // chapter and let mid-session geometry changes adjust the live editor
+    // without disrupting the user's current scroll position.
+    const restoredChapterRef = React.useRef<string | null>(null)
+    // Stored lazily by the save effect: only `setSavedPageIndex(...)`
+    // when the topmost-visible page actually changes. Without this gate
+    // the atom gets a fresh write on every scroll tick (~60Hz), each with
+    // a new `updatedAt: Date.now()`, triggering a Jotai re-render each time.
+    const lastSavedPageIndexRef = React.useRef(0)
 
     const updateMangaProgress = useUpdateMangaProgress(mediaId)
 
     const chapterKey = `${provider}:${chapterId}`
-    // keep the chrome out of the first and last visible pages in long strip mode
-    const longStripTopInset = insets.top + 86
-    const longStripBottomInset = insets.bottom + 120
-    const hudTapExclusionTop = controlsVisible ? insets.top + 112 : 0
-    const hudTapExclusionBottom = controlsVisible ? insets.bottom + 86 : 0
+
+    // Layout insets leave room for the floating chrome at top.
+    const scrollTopInset = isTV ? insets.top + 96 : insets.top + 56
+    const scrollBottomInset = insets.bottom + 28
     const pageGapAmount = settings.pageGap ? settings.pageGapAmount : 0
-    const currentSpreadPages = React.useMemo(
-        () => getCurrentSpreadPages(spreads, spreadState.currentSpreadIndex),
-        [spreadState.currentSpreadIndex, spreads],
-    )
-    const currentProgressPageIndex = React.useMemo(() => {
-        // progress follows the trailing page so paired spreads do not under report
-        const lastPageIndex = currentSpreadPages[currentSpreadPages.length - 1]
-        return typeof lastPageIndex === "number" ? lastPageIndex : spreadState.currentPageIndex
-    }, [currentSpreadPages, spreadState.currentPageIndex])
-    const readingProgress = pages.length > 0
-        ? clamp((currentProgressPageIndex + 1) / pages.length, 0, 1)
-        : 0
-    const longStripLayoutProfile = React.useMemo(() => {
-        // this decides when full zoom is worth it and when virtualization should win
-        let narrowestAspectRatio = Number.POSITIVE_INFINITY
-        let widestAspectRatio = 0
-        let hasMissingDimensions = false
 
-        for (const page of pages) {
-            if (!page.width || !page.height) {
-                hasMissingDimensions = true
-            }
-
-            const aspectRatio = getReaderPageAspectRatio(page)
-            if (!Number.isFinite(aspectRatio) || aspectRatio <= 0) continue
-
-            narrowestAspectRatio = Math.min(narrowestAspectRatio, aspectRatio)
-            widestAspectRatio = Math.max(widestAspectRatio, aspectRatio)
+    // Per-spread layout: each row's height matches what
+    // `ReaderPageImage` actually renders (via `getReaderImageSize` on
+    // `effectiveScreenWidth`). In LONG_STRIP each row contains exactly
+    // one page; in DOUBLE_PAGE each row contains a 2-page pair, all of the
+    // same effective width — every row has identical height in the chosen
+    // mode, so `tops[spreadIdx] = scroll-offset at the top of row i` and
+    // `findTopmostVisiblePage` returns spreadIdx (not pageIdx).
+    // `totalHeight` drives the chrome progress bar's percentage fill.
+    const pageGeometry = React.useMemo<{ tops: number[]; totalHeight: number }>(() => {
+        if (displaySpreads.length === 0) return { tops: [], totalHeight: scrollTopInset + scrollBottomInset }
+        const tops: number[] = new Array(displaySpreads.length)
+        let acc = scrollTopInset
+        for (let i = 0; i < displaySpreads.length; i++) {
+            tops[i] = acc
+            // The first page of the spread represents the row's aspect;
+            // all pages within the row render at the same effective width
+            // and therefore the same height.
+            const page = displaySpreads[i][0]
+            const aspectRatio = page.width && page.height ? page.width / page.height : DEFAULT_READER_PAGE_ASPECT_RATIO
+            const pageHeight = getReaderImageSize({
+                aspectRatio,
+                screenWidth: effectiveScreenWidth,
+                screenHeight,
+                mode: "vertical",
+                fitToWidth: settings.fitToWidth,
+            }).height
+            acc += pageHeight + pageGapAmount
         }
+        // Subtract the trailing page-gap (CSS gap doesn't apply past the
+        // last item) and add the bottom padding.
+        return { tops, totalHeight: acc - pageGapAmount + scrollBottomInset }
+    }, [displaySpreads, effectiveScreenWidth, screenHeight, settings.fitToWidth, scrollTopInset, scrollBottomInset, pageGapAmount])
 
-        const hasMeasuredAspectRatios = Number.isFinite(narrowestAspectRatio) && widestAspectRatio > 0
+    // Reading progress as a fraction of total scrollable height. Bounded
+    // to [0, 1] so a brief over-scroll (e.g. rubber-band) doesn't widen
+    // the bar past 100%. Note: this is the fraction of ROWS scrolled,
+    // not pages. In LONG_STRIP each row is one page (1:1). In DOUBLE_PAGE
+    // each row holds two pages, so the bar visually fills twice as fast.
+    // That asymmetry is acceptable: the bar is a "how far through the
+    // chapter am I" gauge that follows scrolling-position, while the
+    // toast label / chapter-progress sync at the last row are independent
+    // of progress-bar velocity.
+    const readingProgress = clamp(scrollOffset / Math.max(1, pageGeometry.totalHeight), 0, 1)
 
-        return {
-            hasMissingDimensions,
-            hasVeryTallPages: hasMeasuredAspectRatios && narrowestAspectRatio < 0.45,
-            hasWideAspectRatioSpread: hasMeasuredAspectRatios
-                && widestAspectRatio / Math.max(narrowestAspectRatio, 0.01) > 2.4,
+    // Topmost-visible page: largest index such that `tops[i] <= offset`.
+    // O(log n) binary search keeps it cheap during smooth scroll and
+    // during the live save effect below.
+    const findTopmostVisiblePage = React.useCallback((offset: number): number => {
+        const tops = pageGeometry.tops
+        if (tops.length === 0) return 0
+        let lo = 0
+        let hi = tops.length - 1
+        while (lo < hi) {
+            const mid = Math.ceil((lo + hi) / 2)
+            if (tops[mid] <= offset) lo = mid
+            else hi = mid - 1
         }
-    }, [pages])
+        return lo
+    }, [pageGeometry.tops])
 
-    const useFullLongStripZoom = settings.readingMode === MANGA_READING_MODE.LONG_STRIP
-        && !longStripLayoutProfile.hasMissingDimensions
-        && !longStripLayoutProfile.hasVeryTallPages
-    const virtualizedLongStripDrawDistance = React.useMemo(() => Math.round(screenHeight * VIRTUALIZED_LONG_STRIP_DRAW_DISTANCE_MULTIPLIER),
-        [screenHeight])
-
-    const longStripContentContainerStyle = React.useMemo(() => ({
-        paddingTop: longStripTopInset,
-        paddingBottom: longStripBottomInset,
-    }), [longStripBottomInset, longStripTopInset])
-    const longStripViewabilityConfig = React.useMemo(() => ({ itemVisiblePercentThreshold: 50 }), [])
-    const disabledMaintainVisibleContentPosition = React.useMemo(() => ({ disabled: true }), [])
-    const {
-        getVirtualizedLongStripItemType,
-        isAndroidLongStrip,
-        longStripScrollEventThrottle,
-        measuredPageAspectRatios,
-        rememberPageAspectRatio,
-        shouldRenderLongStripImages,
-        androidLongStripInitialWarmupComplete,
-    } = useMangaReaderAndroidLongStrip({
-        chapterKey,
-        currentPageIndex: spreadState.currentPageIndex,
-        currentSpreadIndex: spreadState.currentSpreadIndex,
-        pages,
-        readingMode: settings.readingMode,
-        savedPageIndex,
-    })
-
+    // Reset on chapter change. Focus-tag atom lifecycle is handled by the
+    // Pressables' callback refs (refs fire during commit, BEFORE this
+    // useEffect runs) — explicitly clearing the atoms here would overwrite
+    // the freshly-registered tags.
     React.useEffect(() => {
-        setActiveZoomId(null)
-        currentPageIndexRef.current = Math.max(0, savedPageIndex)
         didRestoreInitialPageRef.current = false
         restoringPositionRef.current = false
-        pendingLongStripRestoreRef.current = null
         syncMarkerRef.current = null
-        longStripSpreadLayoutsRef.current = {}
-        setSpreadState({ currentPageIndex: Math.max(0, savedPageIndex), currentSpreadIndex: 0 })
+        restoredChapterRef.current = null
+        lastSavedPageIndexRef.current = 0
+        scrollOffsetRef.current = 0
+        setScrollOffset(0)
+        scrollRef.current?.scrollTo({ y: 0, animated: false })
     }, [chapterId, mediaId, provider])
 
+    // ─── Restore saved position once per chapter mount ─────────────────────
+    // Gated by `restoredChapterRef` so layout-affecting settings (page gap
+    // toggle, gap amount, reading direction, reading mode) can rebuild
+    // `pageGeometry.tops` without snapping the user back to their saved
+    // page mid-reading. The stored index is the server-side page index
+    // (i.e. the index that survives the reading-direction mirror). We
+    // translate through `serverToDisplayIdx` then `displayIdxToSpreadIdx`
+    // to land on the correct spread row in `tops[]`.
     React.useEffect(() => {
-        setActiveZoomId(null)
-    }, [settings.readingMode])
-
-    React.useEffect(() => {
-        currentPageIndexRef.current = spreadState.currentPageIndex
-    }, [spreadState.currentPageIndex])
-
-    React.useEffect(() => {
-            if (spreads.length === 0) return
-            if (isAndroidLongStrip && !androidLongStripInitialWarmupComplete) return
-
-            // restore by page index first so mode changes can remap to a new spread layout
-            const basePageIndex = didRestoreInitialPageRef.current ? currentPageIndexRef.current : savedPageIndex
-            const pageIndex = clamp(basePageIndex, 0, Math.max(pages.length - 1, 0))
-            currentPageIndexRef.current = pageIndex
-            const mappedSpreadIndex = getSpreadIndexForPage(spreads, pageIndex)
-
-            setSpreadState(prev => (
-                prev.currentPageIndex === pageIndex && prev.currentSpreadIndex === mappedSpreadIndex
-                    ? prev
-                    : { currentPageIndex: pageIndex, currentSpreadIndex: mappedSpreadIndex }
-            ))
-
-            restoringPositionRef.current = true
-
+        if (pages.length === 0) return
+        if (displaySpreads.length === 0) return
+        if (restoredChapterRef.current === chapterKey) return
+        restoredChapterRef.current = chapterKey
+        if (savedPageIndex <= 0) {
+            // No saved position; simply mark as restored after one rAF.
             requestAnimationFrame(() => {
-                if (settings.readingMode === MANGA_READING_MODE.LONG_STRIP) {
-                    pendingLongStripRestoreRef.current = mappedSpreadIndex
-
-                    if (useFullLongStripZoom) {
-                        const targetLayout = longStripSpreadLayoutsRef.current[mappedSpreadIndex]
-                        if (targetLayout) {
-                            longStripScrollRef.current?.scrollTo({
-                                y: Math.max(0, targetLayout.y - 12),
-                                animated: false,
-                            })
-                            pendingLongStripRestoreRef.current = null
-                        }
-                    } else {
-                        verticalListRef.current?.scrollToIndex({ index: mappedSpreadIndex, animated: false })
-                        pendingLongStripRestoreRef.current = null
-                    }
-                } else {
-                    horizontalListRef.current?.scrollToIndex({ index: mappedSpreadIndex, animated: false })
-                }
-
-                requestAnimationFrame(() => {
-                    restoringPositionRef.current = false
-                    didRestoreInitialPageRef.current = true
-                })
+                restoringPositionRef.current = false
+                didRestoreInitialPageRef.current = true
             })
-        },
-        [androidLongStripInitialWarmupComplete, isAndroidLongStrip, pages.length, settings.doublePageOffset, settings.readingDirection,
-            settings.readingMode, spreads, useFullLongStripZoom])
+            return
+        }
 
+        restoringPositionRef.current = true
+        // Defer one rAF so the ScrollView has committed its first layout
+        // pass with the new spread array; without this, Android TV can
+        // snap back to y=0 because ScrollView's contentSize is still 0.
+        requestAnimationFrame(() => {
+            // Translate the persisted server-index to the display-index
+            // for the current reading direction. Both ends are clamped
+            // because the chapter may have shrunk between sessions, and
+            // the mirror may overshoot otherwise.
+            const clampedStore = clamp(savedPageIndex, 0, pages.length - 1)
+            const displayIdx = clamp(serverToDisplayIdx(clampedStore), 0, pages.length - 1)
+            const spreadIdx = clamp(displayToSpreadIdx(displayIdx), 0, displaySpreads.length - 1)
+            const targetY = pageGeometry.tops[spreadIdx] ?? 0
+            if (clampedStore !== lastSavedPageIndexRef.current) lastSavedPageIndexRef.current = clampedStore
+            scrollOffsetRef.current = targetY
+            setScrollOffset(targetY)
+            scrollRef.current?.scrollTo({ y: targetY, animated: false })
+            requestAnimationFrame(() => {
+                restoringPositionRef.current = false
+                didRestoreInitialPageRef.current = true
+            })
+        })
+    }, [chapterKey, pages.length, displaySpreads.length, savedPageIndex, pageGeometry.tops, serverToDisplayIdx, displayToSpreadIdx])
+
+    // ─── Save position as the user scrolls past page boundaries ────────────
+    // The Jotai store is keyed by chapter, so we persist the server-side
+    // page index — this way an RTL save is correctly mirrored to the LTR
+    // viewing direction on the next mount (and vice-versa). The reading
+    // mode affects only the visual layout; the saved server-index always
+    // refers to a specific manga page, regardless of mode.
     React.useEffect(() => {
         if (!didRestoreInitialPageRef.current) return
-        if (pages.length === 0 || currentSpreadPages.length === 0) return
+        if (displaySpreads.length === 0) return
+        const currentSpreadIdx = findTopmostVisiblePage(scrollOffset)
+        const firstDisplayPageIdx = spreadIdxToFirstDisplayIdx(currentSpreadIdx)
+        const serverIdx = clamp(displayToServerIdx(firstDisplayPageIdx), 0, pages.length - 1)
+        if (serverIdx === lastSavedPageIndexRef.current) return
+        lastSavedPageIndexRef.current = serverIdx
+        setSavedPageIndex(serverIdx)
+    }, [findTopmostVisiblePage, displaySpreads.length, scrollOffset, displayToServerIdx, spreadIdxToFirstDisplayIdx, pages.length, setSavedPageIndex])
 
-        // save the last page in the spread so double page progress feels natural
-        setSavedPageIndex(currentProgressPageIndex)
-    }, [currentProgressPageIndex, currentSpreadPages.length, pages.length, setSavedPageIndex])
+    // ─── Re-position scroll when reading direction flips mid-session ──────
+    // When the user toggles LTR↔RTL, `displayPages` reverses and
+    // `pageGeometry.tops` mirrors accordingly, but `ScrollView`'s
+    // absolute contentOffset stays put. The user would otherwise see a
+    // different page at the same y. We pin the user's view to the same
+    // **image** by translating the last-saved server-index through the
+    // new direction and scrolling to that y. The `restoredChapterRef`
+    // gate above already prevents this from being mistaken for a fresh
+    // restore, so the live scroll position survives the flip.
+    const prevReadingDirectionRef = React.useRef(settings.readingDirection)
+    React.useEffect(() => {
+        if (prevReadingDirectionRef.current === settings.readingDirection) return
+        prevReadingDirectionRef.current = settings.readingDirection
+        if (displaySpreads.length === 0) return
+        if (pageGeometry.tops.length !== displaySpreads.length) return
+        if (!didRestoreInitialPageRef.current) return
+        const serverIdx = clamp(lastSavedPageIndexRef.current, 0, pages.length - 1)
+        const displayIdx = clamp(serverToDisplayIdx(serverIdx), 0, displayPages.length - 1)
+        const spreadIdx = clamp(displayToSpreadIdx(displayIdx), 0, displaySpreads.length - 1)
+        const targetY = pageGeometry.tops[spreadIdx] ?? 0
+        scrollOffsetRef.current = targetY
+        setScrollOffset(targetY)
+        scrollRef.current?.scrollTo({ y: targetY, animated: false })
+    }, [settings.readingDirection, displaySpreads.length, displayPages.length, pageGeometry.tops, didRestoreInitialPageRef.current, serverToDisplayIdx, displayToSpreadIdx, pages.length])
 
+    // ─── Re-position scroll when reading mode flips mid-session ─────────────
+    // Toggle between LONG_STRIP and DOUBLE_PAGE reshapes `displaySpreads`
+    // (and therefore `pageGeometry.tops`) so live `scrollOffset` no longer
+    // points at the same image. Same fix as the direction-flip: translate
+    // the user's last-saved server-index through the new (direction, mode)
+    // and scroll to the matching spread. The `restoredChapterRef` gate
+    // already prevents re-entry on layout-affecting settings changes
+    // (page gap, gap amount); the additional `prevReadingModeRef` check
+    // ensures we only re-scroll on actual mode flips, not on the initial
+    // mount.
+    const prevReadingModeRef = React.useRef(settings.readingMode)
+    React.useEffect(() => {
+        if (prevReadingModeRef.current === settings.readingMode) return
+        prevReadingModeRef.current = settings.readingMode
+        if (displaySpreads.length === 0) return
+        if (pageGeometry.tops.length !== displaySpreads.length) return
+        if (!didRestoreInitialPageRef.current) return
+        const serverIdx = clamp(lastSavedPageIndexRef.current, 0, pages.length - 1)
+        const displayIdx = clamp(serverToDisplayIdx(serverIdx), 0, displayPages.length - 1)
+        const spreadIdx = clamp(displayToSpreadIdx(displayIdx), 0, displaySpreads.length - 1)
+        const targetY = pageGeometry.tops[spreadIdx] ?? 0
+        scrollOffsetRef.current = targetY
+        setScrollOffset(targetY)
+        scrollRef.current?.scrollTo({ y: targetY, animated: false })
+    }, [settings.readingMode, displaySpreads.length, displayPages.length, pageGeometry.tops, didRestoreInitialPageRef.current, serverToDisplayIdx, displayToSpreadIdx, pages.length])
+
+    // ─── Flash text auto-hide ──────────────────────────────────────────────
     React.useEffect(() => {
         if (!flashText) return
-
         const timeout = setTimeout(() => setFlashText(null), 850)
         return () => clearTimeout(timeout)
     }, [flashText])
 
-    const onSettingChange = React.useCallback(
-        <Key extends keyof typeof settings>(key: Key, value: (typeof settings)[Key]) => {
-            setSetting(key, value)
-            let label: string | undefined
-
-            if (key === "readingMode") {
-                label = value === MANGA_READING_MODE.LONG_STRIP
-                    ? "Long Strip"
-                    : value === MANGA_READING_MODE.DOUBLE_PAGE
-                        ? "Double Page"
-                        : "Single Page"
-            } else if (key === "readingDirection") {
-                label = value === MANGA_READING_DIRECTION.RTL ? "Right to Left" : "Left to Right"
-            } else if (key === "pageGap") {
-                label = value ? "Page Gaps On" : "Page Gaps Off"
-            } else if (key === "pageGapAmount") {
-                label = `Gap ${String(value)}px`
-            } else if (key === "pageGapShadow") {
-                label = value ? "Gap Shadow On" : "Gap Shadow Off"
-            } else if (key === "showProgressBar") {
-                label = value ? "Progress Bar On" : "Progress Bar Off"
-            } else if (key === "doublePageOffset") {
-                label = `Offset ${String(value)}`
-            } else if (key === "zoomLevel") {
-                label = `Zoom ${String(value)}x`
-            } else if (key === "brightness") {
-                label = `Brightness ${Math.round(Number(value) * 100)}%`
-            } else if (key === "fitToWidth") {
-                label = value ? "Fit to Width On" : "Fit to Width Off"
-            }
-
-            if (label) setFlashText(label)
-        },
-        [setSetting],
-    )
-
+    // ─── Sync progress to server when chapter completes ─────────────────────
     const doSyncProgress = React.useCallback(() => {
         if (serverStatus?.settings?.manga?.mangaAutoUpdateProgress === false) return
-
         const chapterProgress = getChapterProgressNumber(currentChapter.chapterNumber)
         const currentProgress = entry?.listData?.progress ?? 0
         if (!entry?.media || !chapterProgress || chapterProgress <= currentProgress) return
-
-        // only send one completion sync per chapter finish
         if (syncMarkerRef.current === chapterKey) return
-
         syncMarkerRef.current = chapterKey
 
         const payload = {
@@ -387,22 +460,36 @@ export function MangaReaderScreen({ mediaId, provider, chapterId, chapterNumber 
             chapterNumber: chapterProgress,
             totalChapters: entry.media.chapters ?? 0,
         }
-
-        updateMangaProgress.mutate(payload, {
-            onError: () => {
-                syncMarkerRef.current = null
-            },
-        })
+        updateMangaProgress.mutate(payload, { onError: () => { syncMarkerRef.current = null } })
     }, [chapterKey, currentChapter.chapterNumber, entry, mediaId, serverStatus?.settings?.manga?.mangaAutoUpdateProgress, updateMangaProgress])
 
     React.useEffect(() => {
-        if (spreads.length === 0) return
-        if (pages.length === 0) return
-        if (currentProgressPageIndex < pages.length - 1) return
-
+        if (displaySpreads.length === 0) return
+        if (!didRestoreInitialPageRef.current) return
+        const currentVisibleSpread = findTopmostVisiblePage(scrollOffset)
+        if (currentVisibleSpread < displaySpreads.length - 1) return
         doSyncProgress()
-    }, [currentProgressPageIndex, doSyncProgress, pages.length, spreads.length])
+    }, [doSyncProgress, findTopmostVisiblePage, displaySpreads.length, scrollOffset])
 
+    // ─── Settings handler — produces the small toast badge ──────────────────
+    const onSettingChange = React.useCallback(
+        <Key extends keyof MangaReaderSettings>(key: Key, value: MangaReaderSettings[Key]) => {
+            setSetting(key, value)
+            let label: string | undefined
+            if (key === "readingMode") label = value === MANGA_READING_MODE.LONG_STRIP ? "Long Strip" : "Double Page"
+            else if (key === "readingDirection") label = value === MANGA_READING_DIRECTION.RTL ? "Right to Left" : "Left to Right"
+            else if (key === "pageGap") label = value ? "Page Gaps On" : "Page Gaps Off"
+            else if (key === "pageGapAmount") label = `Gap ${String(value)}px`
+            else if (key === "pageGapShadow") label = value ? "Gap Shadow On" : "Gap Shadow Off"
+            else if (key === "showProgressBar") label = value ? "Progress Bar On" : "Progress Bar Off"
+            else if (key === "brightness") label = `Brightness ${Math.round(Number(value) * 100)}%`
+            else if (key === "fitToWidth") label = value ? "Fit to Width On" : "Fit to Width Off"
+            if (label) setFlashText(label)
+        },
+        [setSetting],
+    )
+
+    // ─── Chapter navigation ────────────────────────────────────────────────
     const navigateToChapter = React.useCallback((target: MangaReaderChapterRef | undefined) => {
         if (!target) return
         router.replace(formatMangaReaderHref({
@@ -413,272 +500,62 @@ export function MangaReaderScreen({ mediaId, provider, chapterId, chapterNumber 
         }))
     }, [router])
 
-    const scrollToSpread = React.useCallback((targetIndex: number) => {
-        const clampedIndex = clamp(targetIndex, 0, Math.max(spreads.length - 1, 0))
-
-        // long strip can restore by layout or by list index depending on the render path
-        if (settings.readingMode === MANGA_READING_MODE.LONG_STRIP) {
-            if (useFullLongStripZoom) {
-                const targetLayout = longStripSpreadLayoutsRef.current[clampedIndex]
-                longStripScrollRef.current?.scrollTo({
-                    y: Math.max(0, (targetLayout?.y ?? 0) - 12),
-                    animated: true,
-                })
-                return
-            }
-
-            verticalListRef.current?.scrollToIndex({ index: clampedIndex, animated: true })
-            return
-        }
-
-        horizontalListRef.current?.scrollToIndex({ index: clampedIndex, animated: true })
-    }, [settings.readingMode, spreads.length, useFullLongStripZoom])
-
-    const handleSpreadZoomChange = React.useCallback((spreadId: string, zoomed: boolean) => {
-        setActiveZoomId(current => {
-            if (zoomed) return spreadId
-            return current === spreadId ? null : current
-        })
-    }, [])
-
-    const handleOpenSettings = React.useCallback(() => {
-        setSettingsOpen(current => {
-            if (!current) return true
-
-            // closing first forces the sheet to rebuild its snap state
-            setSettingsSheetNonce(value => value + 1)
-            requestAnimationFrame(() => {
-                setSettingsOpen(true)
-            })
-
-            return false
-        })
-    }, [])
-
-    const handleLongStripSpreadLayout = React.useCallback((index: number, event: LayoutChangeEvent) => {
-        const { y, height } = event.nativeEvent.layout
-        longStripSpreadLayoutsRef.current[index] = { y, height }
-
-        if (pendingLongStripRestoreRef.current === index && useFullLongStripZoom) {
-            longStripScrollRef.current?.scrollTo({
-                y: Math.max(0, y - 12),
-                animated: false,
-            })
-            pendingLongStripRestoreRef.current = null
-            requestAnimationFrame(() => {
-                restoringPositionRef.current = false
-            })
-        }
-    }, [useFullLongStripZoom])
-
-    const updateSpreadStateFromIndex = React.useCallback((nextIndex: number) => {
-        const clampedIndex = clamp(nextIndex, 0, Math.max(spreads.length - 1, 0))
-        const spread = spreads[clampedIndex] ?? []
-
-        setSpreadState(current => (
-            current.currentSpreadIndex === clampedIndex && current.currentPageIndex === (spread[0] ?? 0)
-                ? current
-                : {
-                    currentPageIndex: spread[0] ?? 0,
-                    currentSpreadIndex: clampedIndex,
-                }
-        ))
-    }, [spreads])
-
-    const handlePagedScrollSettled = React.useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-        if (restoringPositionRef.current) return
-
-        // wait for scroll
-        const layoutWidth = event.nativeEvent.layoutMeasurement.width || screenWidth
-        if (!layoutWidth) return
-
-        const nextIndex = Math.round(event.nativeEvent.contentOffset.x / layoutWidth)
-        updateSpreadStateFromIndex(nextIndex)
-    }, [screenWidth, updateSpreadStateFromIndex])
-
-    const handleLongStripScroll = React.useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-        if (restoringPositionRef.current) return
-
-        longStripContentOffsetRef.current = event.nativeEvent.contentOffset.y
-
-        const anchorY = event.nativeEvent.contentOffset.y + Math.min(220, event.nativeEvent.layoutMeasurement.height * 0.28)
-        let nextIndex = 0
-
-        for (let index = 0; index < spreads.length; index += 1) {
-            const layout = longStripSpreadLayoutsRef.current[index]
-            if (!layout) continue
-            if (layout.y <= anchorY) {
-                nextIndex = index
-                continue
-            }
-            break
-        }
-
-        updateSpreadStateFromIndex(nextIndex)
-    }, [spreads, updateSpreadStateFromIndex])
-
-    const handleLongStripViewableItemsChanged = React.useCallback(({
-        viewableItems,
-    }: {
-        viewableItems: ViewToken<number[]>[]
-        changed: ViewToken<number[]>[]
-    }) => {
-        if (restoringPositionRef.current) return
-
-        const firstVisible = viewableItems[0]
-        if (!firstVisible?.index) {
-            if (firstVisible?.index !== 0) return
-        }
-
-        updateSpreadStateFromIndex(firstVisible.index ?? 0)
-    }, [updateSpreadStateFromIndex])
-
-    const toggleControlsVisible = React.useCallback(() => {
-        setControlsVisible(prev => !prev)
-    }, [])
-
-    const handleContentFocus = React.useCallback(() => {
-        setControlsVisible(false)
-    }, [])
-
-    const renderVirtualizedLongStripItem = React.useCallback(({ item }: ListRenderItemInfo<number[]>) => {
-        const zoomId = `${chapterKey}-${item.join("-")}`
-
-        return (
-            // each row keeps local pinch state
-            <ReaderLongStripItem
-                key={zoomId}
-                spreadIndexes={item}
-                pages={pages}
-                settings={settings}
-                screenWidth={screenWidth}
-                screenHeight={readerHeight}
-                pageGapAmount={pageGapAmount}
-                zoomId={zoomId}
-                pinchEnabled
-                onTap={toggleControlsVisible}
-                onZoomChange={(zoomed) => handleSpreadZoomChange(zoomId, zoomed)}
-                measuredAspectRatios={measuredPageAspectRatios}
-                onPageAspectRatioMeasured={rememberPageAspectRatio}
-                reduceImageTransition
-                tapExclusionBottom={hudTapExclusionBottom}
-                tapExclusionTop={hudTapExclusionTop}
-                tapViewportHeight={screenHeight}
-            />
-        )
-    }, [
-        chapterKey,
-        handleSpreadZoomChange,
-        hudTapExclusionBottom,
-        hudTapExclusionTop,
-        pageGapAmount,
-        pages,
-        readerHeight,
-        screenHeight,
-        screenWidth,
-        settings,
-        toggleControlsVisible,
-    ])
-
-
-    const goToPreviousSpread = React.useCallback(() => {
-        scrollToSpread(spreadState.currentSpreadIndex - 1)
-    }, [scrollToSpread, spreadState.currentSpreadIndex])
-
-    const goToNextSpread = React.useCallback(() => {
-        scrollToSpread(spreadState.currentSpreadIndex + 1)
-    }, [scrollToSpread, spreadState.currentSpreadIndex])
-
-    const scrollLongStripSmooth = React.useCallback((direction: "up" | "down") => {
-        const step = screenHeight * 0.75
-
-        if (useFullLongStripZoom) {
-            const currentY = longStripContentOffsetRef.current
-            const targetY = direction === "down" ? currentY + step : Math.max(0, currentY - step)
-            longStripScrollRef.current?.scrollTo({ y: targetY, animated: true })
-        } else {
-            const listRef = verticalListRef.current
-            if (!listRef) return
-            const currentOffset = longStripContentOffsetRef.current
-            const targetOffset = direction === "down" ? currentOffset + step : Math.max(0, currentOffset - step)
-            ;(listRef as any)?.scrollToOffset?.({ offset: targetOffset, animated: true })
-        }
-    }, [screenHeight, useFullLongStripZoom])
-
     const handleOpenNextChapter = React.useCallback(() => {
-        // try to sync before navigation so the finished chapter is not lost
         doSyncProgress()
         navigateToChapter(nextChapter)
     }, [doSyncProgress, navigateToChapter, nextChapter])
 
-    const handleKeyDown = React.useCallback((e: any) => {
-        // Enter/Select solo cuando controles ocultos (no interferir con botones del header)
-        if (e.key === "Enter" || e.key === "Select" || e.code === "Space") {
-            if (!controlsVisible) {
-                cycleViewMode()
-                return true
-            }
-            return false // controles visibles → que lo maneje el botón enfocado
-        }
+    const handleOpenSettings = React.useCallback(() => {
+        setSettingsOpen(current => {
+            if (!current) return true
+            setSettingsSheetNonce(value => value + 1)
+            requestAnimationFrame(() => { setSettingsOpen(true) })
+            return false
+        })
+    }, [])
 
-        // Back → show controls (return to header)
-        if (e.key === "Back" || e.key === "Escape") {
-            if (!controlsVisible) {
-                toggleControlsVisible()
-                return true
-            }
-            return false // header Back → system handles exit
-        }
+    // ─── Scroll tracking ───────────────────────────────────────────────────
+    const handleScroll = React.useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+        if (restoringPositionRef.current) return
+        const y = event.nativeEvent.contentOffset.y
+        scrollOffsetRef.current = y
+        setScrollOffset(y)
+    }, [])
 
-        if (!controlsVisible) {
+    // ─── DPAD handler ──────────────────────────────────────────────────────
+    // LONG_STRIP mode: LEFT/RIGHT = chapter nav (today's behaviour).
+    // DOUBLE_PAGE mode: LEFT/RIGHT stepping across the spread's two pages
+    // is handled by native spatial nav, so we don't intercept it — the
+    // chrome's prev/next-chapter buttons remain the only chapter-level
+    // control. UP/DOWN always flow through to native spatial nav so
+    // focus traverses the per-page chain (chrome BACK → page 1 → … →
+    // last page → chrome BACK) without being held by the JS layer.
+    const handleDpadNavigation = React.useCallback((e: any) => {
+        if (settings.readingMode !== MANGA_READING_MODE.DOUBLE_PAGE) {
             if (e.key === "ArrowLeft" || e.key === "Left") {
-                if (previousChapter) {
-                    navigateToChapter(previousChapter)
-                }
+                if (previousChapter) navigateToChapter(previousChapter)
                 return true
             }
             if (e.key === "ArrowRight" || e.key === "Right") {
-                if (nextChapter) {
-                    navigateToChapter(nextChapter)
-                }
-                return true
-            }
-            if (e.key === "ArrowDown" || e.key === "Down") {
-                if (settings.readingMode === MANGA_READING_MODE.LONG_STRIP) {
-                    scrollLongStripSmooth("down")
-                } else {
-                    goToNextSpread()
-                }
-                return true
-            }
-            if (e.key === "ArrowUp" || e.key === "Up") {
-                if (settings.readingMode === MANGA_READING_MODE.LONG_STRIP) {
-                    scrollLongStripSmooth("up")
-                } else {
-                    goToPreviousSpread()
-                }
+                if (nextChapter) navigateToChapter(nextChapter)
                 return true
             }
         }
-
         return false
-    }, [controlsVisible, cycleViewMode, goToNextSpread, goToPreviousSpread, navigateToChapter, nextChapter, previousChapter, scrollLongStripSmooth, toggleControlsVisible, settings.readingMode])
+    }, [navigateToChapter, previousChapter, nextChapter, settings.readingMode])
 
     const showUnavailableState = !currentChapterDownloaded && !isConnected
     const showLoading = !showUnavailableState && pages.length === 0 && pageContainerLoading
-    // android waits for warmup so restore does not jump after first render
-    const showPreparingSavedPosition = !showUnavailableState && !showLoading && pages.length > 0 && isAndroidLongStrip && !androidLongStripInitialWarmupComplete
     const showEmpty = !showUnavailableState && !showLoading && pages.length === 0
     const chapterTitle = currentChapter.title || `Chapter ${currentChapter.chapterNumber}`
     const mangaTitle = entry?.media?.title?.userPreferred || entry?.media?.title?.english || entry?.media?.title?.romaji || `Manga #${mediaId}`
-    const isUsingLocalPages = localPages.length > 0
 
     return (
         <View
             className="flex-1 bg-[#080808]"
-            {...(isTV ? { onKeyDown: handleKeyDown as any } : {})}
+            {...(isTV ? { onKeyDown: handleDpadNavigation as any } : {})}
         >
-            <StatusBar hidden={!controlsVisible} animated barStyle="light-content" />
+            <StatusBar hidden barStyle="light-content" />
             <Stack.Screen options={{ autoHideHomeIndicator: true }} />
 
             {showLoading ? (
@@ -687,11 +564,6 @@ export function MangaReaderScreen({ mediaId, provider, chapterId, chapterNumber 
                     <Text className="text-sm text-white/40">
                         Loading chapter pages...
                     </Text>
-                </View>
-            ) : showPreparingSavedPosition ? (
-                <View className="flex-1 items-center justify-center gap-4 px-6">
-                    <ActivityIndicator size="small" color="rgba(255,255,255,0.8)" />
-                    <Text className="text-center text-sm text-white/40">Preparing pages...</Text>
                 </View>
             ) : showUnavailableState ? (
                 <ReaderStateCard
@@ -711,174 +583,135 @@ export function MangaReaderScreen({ mediaId, provider, chapterId, chapterNumber 
                 />
             ) : (
                 <>
-                    {/* TV header: in-flow, not overlay */}
-                    {controlsVisible && (
-                        <View style={{ paddingTop: insets.top + 10, paddingHorizontal: 16, backgroundColor: "rgba(8,8,8,0.95)" }}>
-                            <View className="gap-2.5">
-                                <View className="flex-row items-center gap-3">
-                                    <ReaderIconButton icon="chevron-back" onPress={() => router.back()} />
-                                    <View className="flex-1">
-                                        <Text className="text-sm font-semibold text-white" numberOfLines={1}>
-                                            {chapterTitle}
-                                        </Text>
-                                        <Text className="mt-0.5 text-xs text-white/40" numberOfLines={1}>
-                                            {mangaTitle}
-                                        </Text>
-                                    </View>
-                                    <View className="flex-row items-center gap-1.5">
-                                        <ReaderSmallButton
-                                            icon="chevron-back"
-                                            disabled={!previousChapter}
-                                            onPress={() => previousChapter && navigateToChapter(previousChapter)}
-                                        />
-                                        <ReaderSmallButton
-                                            icon="chevron-forward"
-                                            disabled={!nextChapter}
-                                            onPress={() => nextChapter && handleOpenNextChapter()}
-                                        />
-                                        <ReaderIconButton icon="settings-outline" onPress={handleOpenSettings} />
-                                    </View>
+                    {/* Floating chrome: TV-focusable row at the top of the canvas.
+                        Always visible on TV — the user has at most ~5m distance
+                        to interrupt reading and the persistent chrome doubles as
+                        the focus anchor for spatial nav. DPAD forward to the
+                        first manga image once focus leaves the chrome via
+                        `onKeyDown`. */}
+                    <View
+                        pointerEvents="box-none"
+                        style={{
+                            position: "absolute",
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            paddingTop: insets.top + 10,
+                            paddingHorizontal: 16,
+                            backgroundColor: "rgba(8,8,8,0.95)",
+                            zIndex: 40,
+                        }}
+                    >
+                        <View pointerEvents="auto" className="gap-2.5">
+                            <View className="flex-row items-center gap-3">
+                                <ReaderIconButton
+                                    icon="chevron-back"
+                                    onPress={() => router.back()}
+                                    role="back"
+                                    hasTVPreferredFocus={isTV}
+                                    nextFocusLeft={isTV ? sidebarTag ?? undefined : undefined}
+                                />
+                                <View className="flex-1">
+                                    <Text className="text-sm font-semibold text-white" numberOfLines={1}>
+                                        {chapterTitle}
+                                    </Text>
+                                    <Text className="mt-0.5 text-xs text-white/40" numberOfLines={1}>
+                                        {mangaTitle}
+                                    </Text>
                                 </View>
-
-                                {settings.showProgressBar && pages.length > 0 && (
-                                    <View className="mx-1 h-0.5 overflow-hidden rounded-full bg-white/8">
-                                        <View
-                                            className="h-full rounded-full bg-brand-300/60"
-                                            style={{ width: `${readingProgress * 100}%` }}
-                                        />
-                                    </View>
-                                )}
+                                <View className="flex-row items-center gap-1.5">
+                                    <ReaderIconButton
+                                        icon="chevron-back"
+                                        disabled={!previousChapter}
+                                        onPress={() => previousChapter && navigateToChapter(previousChapter)}
+                                        role="prev"
+                                    />
+                                    <ReaderIconButton
+                                        icon="chevron-forward"
+                                        disabled={!nextChapter}
+                                        onPress={() => nextChapter && handleOpenNextChapter()}
+                                        role="next"
+                                    />
+                                    <ReaderIconButton
+                                        icon="settings-outline"
+                                        onPress={handleOpenSettings}
+                                        role="settings"
+                                    />
+                                </View>
                             </View>
+                            {settings.showProgressBar && pages.length > 0 && (
+                                <View className="mx-1 h-0.5 overflow-hidden rounded-full bg-white/8">
+                                    <View
+                                        className="h-full rounded-full bg-brand-300/60"
+                                        style={{ width: `${readingProgress * 100}%` }}
+                                    />
+                                </View>
+                            )}
                         </View>
-                    )}
+                    </View>
 
-                    {/* TV flashText */}
+                    {/* Setting-change toast — small chip below the chrome. */}
                     {flashText && (
                         <View
                             pointerEvents="none"
                             style={{ position: "absolute", top: insets.top + 60, left: 0, right: 0, zIndex: 50 }}
                         >
-                            <Animated.View
-                                entering={FadeIn.duration(120)}
-                                exiting={FadeOut.duration(180)}
-                                className="items-center"
-                            >
+                            <View className="items-center">
                                 <View className="rounded-full border border-white/8 bg-black/60 px-4 py-1.5">
                                     <Text className="text-xs font-medium text-white/70">{flashText}</Text>
                                 </View>
-                            </Animated.View>
+                            </View>
                         </View>
                     )}
 
-                    {/* Contenido manga */}
-                    <View className="flex-1">
-                        {settings.readingMode === MANGA_READING_MODE.LONG_STRIP ? (
-                            useFullLongStripZoom ? (
-                                <MangaReaderZoomSurface
-                                    scrollViewRef={longStripScrollRef}
-                                    style={{ flex: 1 }}
-                                    contentContainerStyle={{
-                                        paddingTop: longStripTopInset,
-                                        paddingBottom: longStripBottomInset,
-                                    }}
-                                    maxScale={settings.zoomLevel}
-                                    onScroll={handleLongStripScroll}
-                                    onTap={toggleControlsVisible}
-                                    pinchEnabled
-                                    removeClippedSubviews={isAndroidLongStrip}
-                                    scrollEventThrottle={longStripScrollEventThrottle}
-                                    tapExclusionBottom={hudTapExclusionBottom}
-                                    tapExclusionTop={hudTapExclusionTop}
-                                    tapViewportHeight={screenHeight}
-                                >
-                                    <View className="gap-0">
-                                        {spreads.map((item, index) => (
-                                            <View
-                                                key={`${chapterKey}-${item.join("-")}`}
-                                                onLayout={(event) => handleLongStripSpreadLayout(index, event)}
-                                            >
-                                                <ReaderLongStripItem
-                                                    spreadIndexes={item}
-                                                    pages={pages}
-                                                    settings={settings}
-                                                    screenWidth={screenWidth}
-                                                    screenHeight={readerHeight}
-                                                    pageGapAmount={pageGapAmount}
-                                                    zoomId={`${chapterKey}-${item.join("-")}`}
-                                                    withZoom={false}
-                                                    renderImages={shouldRenderLongStripImages(index)}
-                                                    measuredAspectRatios={measuredPageAspectRatios}
-                                                    onPageAspectRatioMeasured={rememberPageAspectRatio}
-                                                    reduceImageTransition={isAndroidLongStrip}
-                                                    onTap={toggleControlsVisible}
-                                                />
-                                            </View>
-                                        ))}
-                                    </View>
-                                </MangaReaderZoomSurface>
-                            ) : (
-                                // the virtualized path trades continuous zoom for smoother tall chapter scrolling
-                                <FlashList
-                                    key={`list-vertical-${chapterKey}`}
-                                    ref={verticalListRef}
-                                    data={spreads}
-                                    keyExtractor={(item) => `${chapterKey}-${item.join("-")}`}
-                                    contentInsetAdjustmentBehavior="never"
-                                    scrollEnabled={isTV ? false : !activeZoomId}
-                                    drawDistance={virtualizedLongStripDrawDistance}
-                                    maintainVisibleContentPosition={disabledMaintainVisibleContentPosition}
-                                    showsVerticalScrollIndicator={false}
-                                    contentContainerStyle={longStripContentContainerStyle}
-                                    viewabilityConfig={longStripViewabilityConfig}
-                                    getItemType={getVirtualizedLongStripItemType}
-                                    onViewableItemsChanged={handleLongStripViewableItemsChanged}
-                                    onScroll={(event) => {
-                                        longStripContentOffsetRef.current = event.nativeEvent.contentOffset.y
-                                    }}
-                                    renderItem={renderVirtualizedLongStripItem}
-                                    onFocus={handleContentFocus}
-                                />
-                            )
-                        ) : (
-                            <FlashList
-                                key={`list-horizontal-${settings.readingDirection}`}
-                                ref={horizontalListRef}
-                                data={spreads}
-                                keyExtractor={(item) => item.join("-")}
-                                horizontal
-                                pagingEnabled
-                                scrollEnabled={isTV ? false : !activeZoomId}
-                                showsHorizontalScrollIndicator={false}
-                                contentInsetAdjustmentBehavior="never"
-                                contentContainerStyle={{ paddingBottom: insets.bottom + 20 }}
-                                onMomentumScrollEnd={handlePagedScrollSettled}
-                                onScrollEndDrag={handlePagedScrollSettled}
-                                style={settings.readingDirection === MANGA_READING_DIRECTION.RTL
-                                    ? { transform: [{ scaleX: -1 }] }
-                                    : undefined}
-                                renderItem={({ item }) => (
-                                    <ReaderPagedItem
-                                        key={`${chapterKey}-${item.join("-")}`}
-                                        spreadIndexes={item}
-                                        pages={pages}
-                                        settings={settings}
-                                        screenWidth={screenWidth}
-                                        screenHeight={screenHeight}
-                                        pageGapAmount={pageGapAmount}
-                                        zoomId={`${chapterKey}-${item.join("-")}`}
-                                        flipForRtl={settings.readingDirection === MANGA_READING_DIRECTION.RTL}
-                                        onTap={toggleControlsVisible}
-                                        onZoomChange={(zoomed) => handleSpreadZoomChange(`${chapterKey}-${item.join("-")}`, zoomed)}
-                                        tapExclusionBottom={hudTapExclusionBottom}
-                                        tapExclusionTop={hudTapExclusionTop}
-                                        tapViewportHeight={screenHeight}
-                                    />
-                                )}
-                                onFocus={handleContentFocus}
-                            />
-                        )}
-                    </View>
+                    {/* Single vertical ScrollView. Each row is a spread:
+                        LONG_STRIP = 1 page, DOUBLE_PAGE = 2 pages in a
+                        flex-row. Each page is still wrapped individually in
+                        a focusable Pressable so native spatial navigation
+                        walks DOWN/UP through pages. The chrome prev/next
+                        buttons remain chapter navigators in both modes. */}
+                    <ScrollView
+                        ref={scrollRef}
+                        focusable={false}
+                        contentContainerStyle={{
+                            paddingTop: scrollTopInset,
+                            paddingBottom: scrollBottomInset,
+                            gap: pageGapAmount,
+                            alignItems: settings.readingMode === MANGA_READING_MODE.DOUBLE_PAGE ? "center" : undefined,
+                        }}
+                        onScroll={handleScroll}
+                        scrollEventThrottle={16}
+                        showsVerticalScrollIndicator={false}
+                        contentInsetAdjustmentBehavior="never"
+                    >
+                        {displaySpreads.map((spread, spreadIdx) => (
+                            <View
+                                key={`spread-${spreadIdx}`}
+                                className="flex-row justify-center items-start"
+                                style={{ gap: interColumnGap }}
+                            >
+                                {spread.map((page, withinIdx) => {
+                                    const displayPageIndex = spreadIdx * pagesPerSpread + withinIdx
+                                    const isFirst = displayPageIndex === 0
+                                    const isLast = displayPageIndex === displayPages.length - 1
+                                    return (
+                                        <ReaderPageImage
+                                            key={page.uri}
+                                            page={page}
+                                            index={displayPageIndex}
+                                            isFirst={isFirst}
+                                            isLast={isLast}
+                                            settings={settings}
+                                            screenWidth={effectiveScreenWidth}
+                                            screenHeight={screenHeight}
+                                        />
+                                    )
+                                })}
+                            </View>
+                        ))}
+                    </ScrollView>
 
+                    {/* Brightness overlay dims the canvas as configured. */}
                     {settings.brightness < 1 && (
                         <View
                             pointerEvents="none"
@@ -897,516 +730,175 @@ export function MangaReaderScreen({ mediaId, provider, chapterId, chapterNumber 
                 defaults={defaults}
                 onSettingChange={onSettingChange}
                 onReset={resetSettings}
+                firstFocusRef={firstFocusSettingOptionRef}
             />
         </View>
     )
 }
 
-function PageScrubber({
-    currentSpreadPages,
-    totalPages,
-    scanlator,
-    spreads,
-    onSeek,
+// ─── Reader icon button ─────────────────────────────────────────────────────
+//
+// Thin wrapper around `TvFocusablePressable` so the chrome stays compact.
+// The optional `role` prop tells the chain which DPAD exit this button is:
+//   - "back": publishes its native tag to `__mangaReaderChromeBackTagAtom`
+//     so the first page can wire its `nextFocusUp` back to this anchor.
+//   - "prev"/"next"/"settings" / undefined: just a regular chrome button.
+//
+// Every button — regardless of role — reads `__mangaReaderFirstPageTagAtom`
+// for its `nextFocusDown`, so DPAD-DOWN from any header button lands on
+// page 1. Native spatial navigation then walks down the per-page focus
+// chain from there.
+// `disabled` removes the Pressable from the focusable tree
+// (`focusable={false}`) so DPAD skips it cleanly.
+function ReaderIconButton({
+    icon,
+    onPress,
+    role,
+    disabled,
+    nextFocusLeft,
+    hasTVPreferredFocus,
 }: {
-    currentSpreadPages: number[]
-    totalPages: number
-    scanlator: string
-    spreads: number[][]
-    onSeek: (spreadIndex: number) => void
+    icon: React.ComponentProps<typeof Ionicons>["name"]
+    onPress: () => void
+    role?: "back" | "prev" | "next" | "settings"
+    disabled?: boolean
+    nextFocusLeft?: number | null
+    hasTVPreferredFocus?: boolean
 }) {
-    const isTV = useIsTV()
-    const [open, setOpen] = React.useState(false)
-    const [dragSpreadIndex, setDragSpreadIndex] = React.useState<number | null>(null)
+    const [firstPageTag] = useAtom(__mangaReaderFirstPageTagAtom)
+    const setChromeBackTag = useSetAtom(__mangaReaderChromeBackTagAtom)
 
-    const scale = useSharedValue(1)
-    const animatedStyle = useAnimatedStyle(() => ({
-        transform: [{ scale: scale.value }],
-    }))
-
-    const displayPages = dragSpreadIndex !== null
-        ? (spreads[dragSpreadIndex] ?? currentSpreadPages)
-        : currentSpreadPages
-
-    const pageLabel = formatPageLabel(displayPages, totalPages)
-
-    const currentSpreadIndex = React.useMemo(
-        () => getSpreadIndexForPage(spreads, currentSpreadPages[0] ?? 0),
-        [currentSpreadPages, spreads],
-    )
-
-    if (isTV) {
-        const spreadIndex = dragSpreadIndex ?? currentSpreadIndex
-        return (
-            <View className="flex-1 flex-row items-center justify-center gap-3">
-                <TvFocusablePressable
-                    onPress={spreadIndex > 0 ? () => onSeek(spreadIndex - 1) : undefined}
-                    className="h-9 w-9 items-center justify-center rounded-full bg-white/5"
-                    focusedClassName="bg-white/15 border border-brand-400/60"
-                >
-                    <Ionicons name="remove" size={16} color="rgba(255,255,255,0.75)" />
-                </TvFocusablePressable>
-                <Text className="text-xs font-medium text-white/50">{pageLabel}</Text>
-                <TvFocusablePressable
-                    onPress={spreadIndex < spreads.length - 1 ? () => onSeek(spreadIndex + 1) : undefined}
-                    className="h-9 w-9 items-center justify-center rounded-full bg-white/5"
-                    focusedClassName="bg-white/15 border border-brand-400/60"
-                >
-                    <Ionicons name="add" size={16} color="rgba(255,255,255,0.75)" />
-                </TvFocusablePressable>
-            </View>
-        )
-    }
-
-    function handleOpen() {
-        setDragSpreadIndex(currentSpreadIndex)
-        scale.value = withSpring(0.96, { damping: 18, stiffness: 280 })
-        requestAnimationFrame(() => {
-            scale.value = withSpring(1, { damping: 16, stiffness: 250 })
-        })
-        setOpen(true)
-    }
-
-    function handleClose() {
-        setOpen(false)
-        setDragSpreadIndex(null)
-    }
-
-    function handleSliderChange(value: number) {
-        const index = Math.round(value)
-        setDragSpreadIndex(index)
-    }
-
-    function handleSliderComplete(value: number) {
-        const index = Math.round(value)
-        setDragSpreadIndex(index)
-        onSeek(index)
-    }
+    // Ref resolves the native tag on mount and clears it on unmount so the
+    // chain doesn't retain a stale anchor after the chrome changes. Only
+    // the BACK button publishes its tag — it's the single upward target.
+    const handleRef = React.useCallback((instance: React.ComponentRef<typeof Pressable> | null) => {
+        if (instance && role === "back") {
+            const tag = findNodeHandle(instance)
+            if (tag !== null) setChromeBackTag(tag)
+        } else if (!instance && role === "back") {
+            setChromeBackTag(null)
+        }
+    }, [role, setChromeBackTag])
 
     return (
-        <View className="flex-1 items-center">
-            {open && (
-                <Pressable
-                    onPress={handleClose}
-                    style={{ position: "absolute", inset: -200, zIndex: 0 }}
-                />
-            )}
-            <Animated.View style={[animatedStyle, { zIndex: 1 }]}>
-                {open ? (
-                    <Animated.View
-                        entering={FadeIn.duration(140)}
-                        exiting={FadeOut.duration(120)}
-                        className="items-center px-2"
-                        style={{ width: 220 }}
-                    >
-                        <Text className="mb-1.5 text-xs font-medium text-white/60">{pageLabel}</Text>
-                        <Slider
-                            style={{ width: "100%", height: 32 }}
-                            minimumValue={0}
-                            maximumValue={Math.max(0, spreads.length - 1)}
-                            step={1}
-                            value={dragSpreadIndex ?? currentSpreadIndex}
-                            minimumTrackTintColor="rgba(161,152,255,0.9)"
-                            maximumTrackTintColor="rgba(255,255,255,0.15)"
-                            thumbTintColor="rgba(199,194,255,1)"
-                            onValueChange={handleSliderChange}
-                            onSlidingComplete={handleSliderComplete}
-                        />
-                    </Animated.View>
-                ) : (
-                    <Animated.View
-                        entering={FadeIn.duration(140)}
-                        exiting={FadeOut.duration(120)}
-                        className="items-center"
-                    >
-                        <Pressable onPress={handleOpen} hitSlop={10}>
-                            <View className="rounded-full border border-white/10 bg-white/[0.07] px-3.5 py-1.5">
-                                <Text className="text-xs font-medium text-white/50">{pageLabel}</Text>
-                            </View>
-                        </Pressable>
-                        <Text className="mt-1.5 text-xs text-white/30">{scanlator}</Text>
-                    </Animated.View>
-                )}
-            </Animated.View>
-        </View>
-    )
-}
-
-function ReaderLongStripItem({
-    spreadIndexes,
-    pages,
-    settings,
-    screenWidth,
-    screenHeight,
-    pageGapAmount,
-    zoomId,
-    pinchEnabled,
-    withZoom = true,
-    renderImages = true,
-    measuredAspectRatios,
-    onPageAspectRatioMeasured,
-    reduceImageTransition,
-    onTap,
-    onZoomChange,
-    tapExclusionTop,
-    tapExclusionBottom,
-    tapViewportHeight,
-}: {
-    spreadIndexes: number[]
-    pages: MangaReaderPage[]
-    settings: ReturnType<typeof useMangaReaderSettings>["settings"]
-    screenWidth: number
-    screenHeight: number
-    pageGapAmount: number
-    zoomId: string
-    pinchEnabled?: boolean
-    withZoom?: boolean
-    renderImages?: boolean
-    measuredAspectRatios?: Record<string, number>
-    onPageAspectRatioMeasured?: (uri: string, aspectRatio: number) => void
-    reduceImageTransition?: boolean
-    onTap: () => void
-    onZoomChange?: (zoomed: boolean) => void
-    tapExclusionTop?: number
-    tapExclusionBottom?: number
-    tapViewportHeight?: number
-}) {
-    const longStripContentWidth = Math.max(screenWidth, 1)
-
-    const content = (
-        // long strip still renders spreads not raw pages so progress and scrubber stay aligned
-        <View className="gap-3 items-center">
-            {spreadIndexes.map(pageIndex => {
-                const page = pages[pageIndex]
-                if (!page) return null
-
-                return (
-                    <ReaderImageCard
-                        key={page.uri}
-                        page={page}
-                        settings={settings}
-                        screenWidth={longStripContentWidth}
-                        screenHeight={screenHeight}
-                        mode="vertical"
-                        measuredAspectRatio={measuredAspectRatios?.[page.uri]}
-                        onAspectRatioMeasured={onPageAspectRatioMeasured}
-                        renderImage={renderImages}
-                        transitionDuration={reduceImageTransition ? 0 : 120}
-                    />
-                )
-            })}
-        </View>
-    )
-
-    return (
-        <View style={{ paddingBottom: pageGapAmount }}>
-            {withZoom ? (
-                <MangaReaderZoomSurface
-                    instanceKey={zoomId}
-                    onTap={onTap}
-                    onZoomChange={onZoomChange}
-                    contentContainerStyle={{
-                        width: longStripContentWidth,
-                    }}
-                    pinchEnabled={pinchEnabled}
-                    style={pinchEnabled
-                        ? {
-                            width: longStripContentWidth,
-                            alignSelf: "center",
-                        }
-                        : undefined}
-                    tapExclusionBottom={tapExclusionBottom}
-                    tapExclusionTop={tapExclusionTop}
-                    tapViewportHeight={tapViewportHeight}
-                >
-                    {content}
-                </MangaReaderZoomSurface>
-            ) : content}
-        </View>
-    )
-}
-
-function ReaderPagedItem({
-    spreadIndexes,
-    pages,
-    settings,
-    screenWidth,
-    screenHeight,
-    pageGapAmount,
-    zoomId,
-    flipForRtl,
-    onTap,
-    onZoomChange,
-    tapExclusionTop,
-    tapExclusionBottom,
-    tapViewportHeight,
-}: {
-    spreadIndexes: number[]
-    pages: MangaReaderPage[]
-    settings: ReturnType<typeof useMangaReaderSettings>["settings"]
-    screenWidth: number
-    screenHeight: number
-    pageGapAmount: number
-    zoomId: string
-    flipForRtl: boolean
-    onTap: () => void
-    onZoomChange: (zoomed: boolean) => void
-    tapExclusionTop: number
-    tapExclusionBottom: number
-    tapViewportHeight: number
-}) {
-    const twoPages = spreadIndexes.length > 1
-    const spreadShadowSides = ["left", "right"] as const
-
-    return (
-        <View
-            style={flipForRtl
-                ? { width: screenWidth, height: screenHeight, transform: [{ scaleX: -1 }] }
-                : { width: screenWidth, height: screenHeight }}
+        <TvFocusablePressable
+            ref={handleRef}
+            onPress={disabled ? undefined : onPress}
+            className="h-12 w-12 items-center justify-center rounded-full bg-white/5"
+            focusedClassName="bg-white/15 border border-brand-400/60"
+            focusable={!disabled}
+            nextFocusLeft={nextFocusLeft ?? undefined}
+            {...(firstPageTag !== null ? { nextFocusDown: firstPageTag } : {})}
+            hasTVPreferredFocus={hasTVPreferredFocus}
         >
-            <MangaReaderZoomSurface
-                instanceKey={zoomId}
-                contentContainerStyle={{
-                    width: screenWidth,
-                    height: screenHeight,
-                    justifyContent: "center",
-                    alignItems: "center",
-                }}
-                maxScale={4}
-                onTap={onTap}
-                onZoomChange={Platform.OS === "ios" ? onZoomChange : undefined}
-                pinchEnabled
-                style={{ flex: 1 }}
-                tapExclusionBottom={tapExclusionBottom}
-                tapExclusionTop={tapExclusionTop}
-                tapViewportHeight={tapViewportHeight}
-            >
-                <View
-                    className={cn(
-                        "items-center justify-center",
-                        twoPages && "flex-row",
-                        "flex-row-reverse", // spreads are built in reading order so the row stays reversed
-                        // twoPages && settings.readingDirection === MANGA_READING_DIRECTION.RTL && "flex-row-reverse",
-                    )}
-                    style={{
-                        gap: pageGapAmount,
-                        minHeight: screenHeight,
-                        width: screenWidth,
-                    }}
-                >
-                    {spreadIndexes.map(pageIndex => {
-                        const pagePosition = spreadIndexes.indexOf(pageIndex)
-                        const page = pages[pageIndex]
-                        if (!page) return null
-
-                        return (
-                            <ReaderImageCard
-                                key={page.uri}
-                                page={page}
-                                settings={settings}
-                                screenWidth={twoPages ? (screenWidth - pageGapAmount) / 2 : screenWidth}
-                                screenHeight={screenHeight}
-                                mode="horizontal"
-                                shadowEdge={spreadShadowSides[pagePosition] ?? null}
-                            />
-                        )
-                    })}
-                </View>
-            </MangaReaderZoomSurface>
-        </View>
+            <Ionicons name={icon} size={20} color="rgba(255,255,255,0.82)" />
+        </TvFocusablePressable>
     )
 }
 
-function ReaderImageCard({
+// ─── Page image ─────────────────────────────────────────────────────────────
+//
+// Single focusable page image. Width = screenWidth; height auto from the
+// page's aspect ratio. Wrapped in a `TvFocusablePressable` with `noScale` so
+// Android TV's native spatial navigation can walk through the chain page
+// by page. The first page publishes its tag to
+// `__mangaReaderFirstPageTagAtom` (so the chrome can wire its
+// `nextFocusDown` to it); the last page publishes to
+// `__mangaReaderLastPageTagAtom`. The first page's `nextFocusUp` reads
+// `__mangaReaderChromeBackTagAtom`; the last page's `nextFocusDown` cycles
+// back to chrome BACK so the focus loop is self-contained. Middle pages
+// rely on native spatial navigation between adjacent siblings in the
+// ScrollView — no explicit chain route needed.
+function ReaderPageImage({
     page,
+    index,
+    isFirst,
+    isLast,
     settings,
     screenWidth,
     screenHeight,
-    mode,
-    shadowEdge,
-    measuredAspectRatio,
-    onAspectRatioMeasured,
-    renderImage = true,
-    transitionDuration = 120,
 }: {
     page: MangaReaderPage
-    settings: ReturnType<typeof useMangaReaderSettings>["settings"]
+    index: number
+    isFirst: boolean
+    isLast: boolean
+    settings: MangaReaderSettings
     screenWidth: number
+    /**
+     * Real screen height is required for `fitToWidth: false` — the contain
+     * math in `getReaderImageSize` clamps the page to the viewport height.
+     * Without this prop the contain branch falls through with `screenHeight = 0`
+     * and the page renders sub-pixel sized.
+     */
     screenHeight: number
-    mode: "vertical" | "horizontal"
-    shadowEdge?: "left" | "right" | null
-    measuredAspectRatio?: number
-    onAspectRatioMeasured?: (uri: string, aspectRatio: number) => void
-    renderImage?: boolean
-    transitionDuration?: number
 }) {
-    const isDoublePage = mode === "horizontal" && settings.readingMode === MANGA_READING_MODE.DOUBLE_PAGE
-    const isPagedMode = mode === "horizontal"
-    const pageAspectRatio = measuredAspectRatio ?? getReaderPageAspectRatio(page)
-    const [aspectRatio, setAspectRatio] = React.useState(pageAspectRatio)
+    const setFirstPageTag = useSetAtom(__mangaReaderFirstPageTagAtom)
+    const setLastPageTag = useSetAtom(__mangaReaderLastPageTagAtom)
+    const [chromeBackTag] = useAtom(__mangaReaderChromeBackTagAtom)
 
-    React.useEffect(() => {
-        setAspectRatio(pageAspectRatio)
-    }, [pageAspectRatio, page.uri])
+    // Ref resolves and publishes the tag on mount; clears on unmount.
+    // Pages that aren't edge cases have a no-op effect because the gated
+    // `isFirst` / `isLast` checks below skip the atom write.
+    const handlePageRef = React.useCallback((instance: React.ComponentRef<typeof Pressable> | null) => {
+        if (!instance) {
+            if (isFirst) setFirstPageTag(null)
+            if (isLast) setLastPageTag(null)
+            return
+        }
+        const tag = findNodeHandle(instance)
+        if (tag === null) return
+        if (isFirst) setFirstPageTag(tag)
+        if (isLast) setLastPageTag(tag)
+    }, [isFirst, isLast, setFirstPageTag, setLastPageTag])
 
-    const viewportWidth = screenWidth
-    const viewportHeight = screenHeight
+    const aspectRatio = page.width && page.height ? page.width / page.height : DEFAULT_READER_PAGE_ASPECT_RATIO
     const { width: imageWidth, height: imageHeight } = getReaderImageSize({
         aspectRatio,
-        screenWidth: viewportWidth,
-        screenHeight: viewportHeight,
-        mode,
+        screenWidth,
+        screenHeight,
+        mode: "vertical",
+        fitToWidth: settings.fitToWidth,
     })
 
-    const contentFit = "contain"
-
-    const pagedFrameStyle = isPagedMode
-        ? {
-            width: isDoublePage ? imageWidth : screenWidth,
-            height: isDoublePage ? imageHeight : screenHeight,
-            alignItems: "center" as const,
-            justifyContent: "center" as const,
-        }
-        : undefined
-
-    const imageStyle = isPagedMode
-        ? (isDoublePage ? { width: imageWidth, height: imageHeight } : { width: screenWidth, height: screenHeight })
-        : { width: imageWidth, height: imageHeight }
-
-    const showCardShadow = settings.pageGap && settings.pageGapShadow
-    const cardShapeClassName = settings.pageGap
-        ? (isPagedMode ? "border border-white/6" : "border border-white/6")
-        : ""
-    // only paired pages get the inner seam so single pages do not look framed twice
-    const showInnerEdgeShadow = Boolean(showCardShadow && isDoublePage && shadowEdge)
-
     return (
-        <View
-            className="bg-transparent"
+        <TvFocusablePressable
+            ref={handlePageRef}
+            noScale
+            focusable
+            className={cn(
+                "mx-auto overflow-hidden bg-[#0c0c0c]",
+                settings.pageGap && "rounded-md border border-white/8",
+            )}
+            focusedClassName={cn(
+                settings.pageGap
+                    ? "border-brand-400 bg-white/5"
+                    : "border border-brand-400/60",
+            )}
+            {...(isFirst && chromeBackTag !== null ? { nextFocusUp: chromeBackTag } : {})}
+            {...(isLast ? { nextFocusDown: chromeBackTag ?? undefined } : {})}
             style={[
-                pagedFrameStyle,
-                showCardShadow ? {
+                { width: imageWidth, height: imageHeight },
+                settings.pageGap && settings.pageGapShadow ? {
                     shadowColor: "#000",
-                    shadowOffset: { width: 0, height: 8 },
-                    shadowOpacity: 0.6,
-                    shadowRadius: 10,
-                    elevation: 12,
+                    shadowOffset: { width: 0, height: 6 },
+                    shadowOpacity: 0.5,
+                    shadowRadius: 8,
+                    elevation: 8,
                 } : undefined,
             ]}
         >
-            <View className={cn("relative overflow-hidden", cardShapeClassName)}>
-                {renderImage ? (
-                    <Image
-                        source={{ uri: page.uri }}
-                        style={imageStyle}
-                        contentFit={contentFit}
-                        transition={transitionDuration}
-                        recyclingKey={`${page.index}-${page.uri}`}
-                        onLoad={(event) => {
-                            if (event.source.width && event.source.height) {
-                                // trust the real bitmap size because some providers lie about dimensions
-                                const nextAspectRatio = event.source.width / event.source.height
-                                setAspectRatio(current => Math.abs(current - nextAspectRatio) < 0.001 ? current : nextAspectRatio)
-                                onAspectRatioMeasured?.(page.uri, nextAspectRatio)
-                            }
-                        }}
-                    />
-                ) : (
-                    <View style={imageStyle} />
-                )}
-                {showInnerEdgeShadow && (
-                    <LinearGradient
-                        pointerEvents="none"
-                        colors={shadowEdge === "left"
-                            ? ["rgba(0,0,0,0.34)", "rgba(0,0,0,0.1)", "transparent"]
-                            : ["transparent", "rgba(0,0,0,0.1)", "rgba(0,0,0,0.34)"]}
-                        start={{ x: 0, y: 0.5 }}
-                        end={{ x: 1, y: 0.5 }}
-                        style={shadowEdge === "left"
-                            ? {
-                                position: "absolute",
-                                top: 0,
-                                bottom: 0,
-                                left: 0,
-                                width: 22,
-                            }
-                            : {
-                                position: "absolute",
-                                top: 0,
-                                bottom: 0,
-                                right: 0,
-                                width: 22,
-                            }}
-                    />
-                )}
-            </View>
-        </View>
-    )
-}
-
-const ReaderIconButton = React.forwardRef<React.ComponentRef<typeof Pressable>, {
-    icon: React.ComponentProps<typeof Ionicons>["name"]
-    onPress: () => void
-    nextFocusLeft?: number | null
-    nextFocusRight?: number | null
-    nextFocusDown?: number | null
-    nextFocusUp?: number | null
-    hasTVPreferredFocus?: boolean
-}>(function ReaderIconButton({
-    icon,
-    onPress,
-    nextFocusLeft,
-    nextFocusRight,
-    nextFocusDown,
-    nextFocusUp,
-    hasTVPreferredFocus,
-}, ref) {
-    return (
-        <TvFocusablePressable
-            ref={ref}
-            onPress={onPress}
-            className="h-12 w-12 items-center justify-center rounded-full bg-white/5"
-            focusedClassName="bg-white/15 border border-brand-400/60"
-            nextFocusLeft={nextFocusLeft ?? undefined}
-            nextFocusRight={nextFocusRight ?? undefined}
-            nextFocusDown={nextFocusDown ?? undefined}
-            nextFocusUp={nextFocusUp ?? undefined}
-            hasTVPreferredFocus={hasTVPreferredFocus}
-        >
-            <Ionicons name={icon} size={19} color="rgba(255,255,255,0.82)" />
-        </TvFocusablePressable>
-    )
-})
-
-function ReaderSmallButton({
-    icon,
-    disabled,
-    onPress,
-    nextFocusLeft,
-    nextFocusRight,
-}: {
-    icon: React.ComponentProps<typeof Ionicons>["name"]
-    disabled?: boolean
-    onPress: () => void
-    nextFocusLeft?: number | null
-    nextFocusRight?: number | null
-}) {
-    return (
-        <TvFocusablePressable
-            onPress={disabled ? undefined : onPress}
-            className={cn(
-                "h-9 w-9 items-center justify-center rounded-full bg-white/5",
-                disabled && "opacity-30",
-            )}
-            focusedClassName="bg-white/15 border border-brand-400/60"
-            nextFocusLeft={nextFocusLeft ?? undefined}
-            nextFocusRight={nextFocusRight ?? undefined}
-        >
-            <Ionicons name={icon} size={16} color="rgba(255,255,255,0.75)" />
+            <Image
+                source={{ uri: page.uri }}
+                style={{ width: imageWidth, height: imageHeight }}
+                contentFit="contain"
+                transition={120}
+                recyclingKey={`${page.index}-${page.uri}`}
+            />
         </TvFocusablePressable>
     )
 }
 
+// ─── Reader state card (loading / error / unavailable) ──────────────────────
 function ReaderStateCard({
     title,
     description,

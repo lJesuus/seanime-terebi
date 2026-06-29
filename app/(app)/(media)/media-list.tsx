@@ -1,61 +1,86 @@
-import { FlashList } from "@shopify/flash-list"
+import { AL_BaseAnime, AL_BaseManga } from "@/api/generated/types"
+import { __media_listPageContentAtom } from "@/atoms/media-list"
+import { MediaEntryCard } from "@/components/features/media/media-entry-card"
+import { Text } from "@/components/ui/text"
+import { buildMediaEntryHref } from "@/lib/media-entry-route"
+import { cn } from "@/lib/utils"
+import { FlashList, ListRenderItemInfo } from "@shopify/flash-list"
+import { router } from "expo-router"
+import { useAtomValue } from "jotai/react"
 import React from "react"
-import { Dimensions, Text, View } from "react-native"
+import { Dimensions, Platform, View } from "react-native"
 
 const { width } = Dimensions.get("screen")
-// TV-only build: 7 columns aligns with the rest of the TV shelf layout.
-const NUM_COLUMNS = 7
-const SPACING = 20
-const PADDING_HORIZONTAL = 28
+const isTV = Platform.isTV
+const NUM_COLUMNS = isTV ? 7 : 3
+const SPACING = isTV ? 16 : 10
+const PADDING_HORIZONTAL = isTV ? 28 : 20
 const AVAILABLE_SPACE = width - (NUM_COLUMNS - 1) * SPACING - 2 * PADDING_HORIZONTAL
-
 const CARD_WIDTH = AVAILABLE_SPACE / NUM_COLUMNS
 
-type MediaListItem = {
-    id: string
-    title: string
-    cover?: string
-}
-
-const SAMPLE_ITEMS: MediaListItem[] = [
-    { id: "1", title: "Sample 1" },
-    { id: "2", title: "Sample 2" },
-    { id: "3", title: "Sample 3" },
-    { id: "4", title: "Sample 4" },
-    { id: "5", title: "Sample 5" },
-    { id: "6", title: "Sample 6" },
-    { id: "7", title: "Sample 7" },
-]
-
 export default function MediaListScreen() {
+    const pageContent = useAtomValue(__media_listPageContentAtom)
+
+    const title = pageContent?.title ?? ""
+    const type = pageContent?.type ?? "anime"
+    const media = pageContent?.media ?? []
+
+    const keyExtractor = React.useCallback(
+        (item: AL_BaseAnime | AL_BaseManga) => String(item.id),
+        [],
+    )
+
+    const renderItem = React.useCallback(
+        ({ item }: ListRenderItemInfo<AL_BaseAnime | AL_BaseManga>) => {
+            return (
+                <MediaEntryCard
+                    type={type}
+                    media={item as any}
+                    cardWidth={CARD_WIDTH}
+                    onPress={() => router.push(buildMediaEntryHref(item, type))}
+                />
+            )
+        },
+        [type],
+    )
+
     return (
         <View className="flex-1 bg-background">
             <FlashList
-                data={SAMPLE_ITEMS}
-                keyExtractor={(item) => item.id}
-                renderItem={({ item }) => (
+                data={media}
+                keyExtractor={keyExtractor}
+                renderItem={renderItem}
+                numColumns={NUM_COLUMNS}
+                ListHeaderComponent={
                     <View
-                        style={{
-                            width: CARD_WIDTH,
-                            height: CARD_WIDTH * 1.5,
-                            margin: SPACING / 2,
-                        }}
-                        className="bg-white/[0.04] rounded-xl"
+                        className={cn(
+                            "flex-row items-center",
+                            isTV ? "px-7 pt-6 pb-4" : "px-5 pt-4 pb-3",
+                        )}
                     >
                         <Text
-                            className="text-white text-sm font-semibold p-3"
-                            numberOfLines={2}
+                            className={cn(
+                                "font-bold text-foreground",
+                                isTV ? "text-3xl" : "text-2xl",
+                            )}
                         >
-                            {item.title}
+                            {title}
+                        </Text>
+                        <Text
+                            className={cn(
+                                "text-muted-foreground ml-4",
+                                isTV ? "text-2xl" : "text-xl",
+                            )}
+                        >
+                            {media.length}
                         </Text>
                     </View>
-                )}
-                numColumns={NUM_COLUMNS}
+                }
                 contentContainerStyle={{
                     paddingHorizontal: PADDING_HORIZONTAL,
                     paddingBottom: 32,
                 }}
-                removeClippedSubviews={false}
+                removeClippedSubviews={!isTV}
                 showsVerticalScrollIndicator={false}
             />
         </View>

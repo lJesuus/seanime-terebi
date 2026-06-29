@@ -78,7 +78,7 @@ export const EpisodeCard = React.memo(function EpisodeCard(props: EpisodeCardPro
                 style={{ borderRadius: 12, overflow: "hidden" }}
                 className={[
                     "relative mb-2 border-2",
-                    isFocused ? "border-brand-400 shadow-2xl" : "border-transparent",
+                    isFocused ? "border-white/60 shadow-2xl" : "border-transparent",
                 ].join(" ")}
             >
                 <SeaImage
