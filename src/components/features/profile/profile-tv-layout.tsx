@@ -61,10 +61,10 @@ function TVContentItem({
             className={cn(
                 "flex-row items-center px-4 py-3.5 mx-2 rounded-xl",
                 isFocused
-                    ? "border border-brand-400/60 bg-white/[0.04]"
+                    ? "border border-white bg-white/[0.04]"
                     : "border border-transparent",
             )}
-            focusedClassName="border-brand-400/60 bg-white/[0.04]"
+            focusedClassName="border border-white bg-white/[0.04]"
             onFocus={onFocus}
             onPress={onPress}
             nextFocusRight={nextFocusRight ?? undefined}

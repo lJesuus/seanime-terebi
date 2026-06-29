@@ -392,7 +392,7 @@ export default function ProfileScreen() {
                     connectionColor={connectionColorClassName}
                 />
                 <View className="mx-5 pt-4 pb-4">
-                    <Text className="text-muted-foreground text-sm text-right">{`v${otaVersionInfo.appVersion}`} | {`${otaVersionInfo.otaVersion}`}</Text>
+                    <Text className="text-muted-foreground text-sm text-right">{`v0.1.3`} | {`${otaVersionInfo.otaVersion}`}</Text>
                 </View>
             </TabFadeView>
         </SafeView>
